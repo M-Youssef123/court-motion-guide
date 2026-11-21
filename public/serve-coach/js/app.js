@@ -51,6 +51,7 @@ function route() {
   if (h !== 'ready') stopPreview();
   if (prev === 'record' && h !== 'record') record.leave();
   if (prev === 'replay' && h !== 'replay') replay.leave();
+  if (prev === 'progress' && h !== 'progress') hearStop();
   VIEWS.forEach((v) => { $(v).hidden = v !== h; });
   const tab = TAB_FOR[h];
   document.querySelectorAll('.tab').forEach((t) => {
@@ -313,9 +314,41 @@ const _enter = record.enter;
 record.enter = () => { debugTarget = recordDebugTarget; return _enter(); };
 
 /* ---------- progress: AI coaching insights (example content) ---------- */
+/* "Hear it" toggles speech: first tap reads the coaching aloud, the button becomes
+ * "Stop audio" while speaking, tapping again stops immediately, and the button resets
+ * when the speech ends, when speech fails, or when the player leaves the page. */
+const HEAR_TEXT = "Nice session. Your toss didn't drift once. Next time, keep your front knee over your ankle on second serves. Do the knee bend pause, two sets of eight.";
+const HEAR_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/></svg>';
+const STOP_ICON = '<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
+let speaking = false;
+function hearReset() {
+  speaking = false;
+  const b = $('hearBtn');
+  b.innerHTML = HEAR_ICON + 'Hear it';
+  b.setAttribute('aria-pressed', 'false');
+}
+function hearStop() {
+  if (!speaking) return;
+  hearReset();
+  try { window.speechSynthesis.cancel(); } catch (e) { /* speech not available */ }
+}
 $('hearBtn').addEventListener('click', () => {
-  say("Nice session. Your toss didn't drift once. Next time, keep your front knee over your ankle on second serves. Do the knee bend pause, two sets of eight.", 'force');
+  if (speaking) { hearStop(); return; }
+  const s = window.speechSynthesis;
+  if (!s || !s.speak) return;
+  try {
+    s.cancel(); // never let two readings overlap
+    const u = new SpeechSynthesisUtterance(HEAR_TEXT);
+    u.rate = 0.95;
+    speaking = true;
+    const b = $('hearBtn');
+    b.innerHTML = STOP_ICON + 'Stop audio';
+    b.setAttribute('aria-pressed', 'true');
+    u.onend = u.onerror = () => { if (speaking) hearReset(); };
+    s.speak(u);
+  } catch (e) { hearReset(); }
 });
+window.addEventListener('pagehide', hearStop);
 const phases = {
   toss: ['assets/phase-toss.svg', 'Placeholder for the toss: your frame and the coach reference will appear here', '<b>Looking good here.</b> Coach keeps the tossing arm straight and releases high, slightly in front.'],
   trophy: ['assets/phase-trophy.svg', 'Placeholder for the trophy position: your frame and the coach reference will appear here', '<b>This is where your fix lives.</b> Coach bends the knees over the feet, then drives up.'],
