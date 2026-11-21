@@ -1,5 +1,6 @@
 import * as store from './store.js';
 import { COACHING_VERSION } from './coaching-insights.js';
+import { initTraining } from './training.js';
 import { initPhaseComparison } from './phase-comparison.js';
 
 const HEAR_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/></svg>';
@@ -15,6 +16,7 @@ export function initProgressCoaching({ openMoment }) {
     <button class="btn btn-quiet" type="button" id="hearBtn" disabled aria-pressed="false">${HEAR_ICON}Hear it</button>
     <p class="kicker">Observations are estimates from body tracking in this camera view. Ball accuracy, ball impact and measured racket speed cannot be determined.</p>`;
   const comparison = initPhaseComparison(host);
+  const renderTraining = initTraining(host);
   const select = document.getElementById('coachClip'), body = document.getElementById('coachBody');
   const status = document.getElementById('coachStatus'), hear = document.getElementById('hearBtn');
   let selected = null, text = '', utterance = null, token = 0;
@@ -37,6 +39,7 @@ export function initProgressCoaching({ openMoment }) {
   async function load(id) {
     const request = ++token; stop(); text = ''; hear.disabled = true; body.replaceChildren();
     comparison.clear();
+    renderTraining();
     status.textContent = 'Reading saved movement data…'; selected = id;
     try {
       const clip = await store.getClip(id);
@@ -46,6 +49,7 @@ export function initProgressCoaching({ openMoment }) {
       if (request !== token) return;
       comparison.load(clip);
       const feedback = analysis?.coaching;
+      renderTraining(clip, feedback);
       document.getElementById('coachSource').textContent = `${new Date(clip.createdAt).toLocaleString()} · ${clip.source === 'upload' ? 'Uploaded footage' : 'Recorded practice'}`;
       if (feedback?.status !== 'supported') {
         status.textContent = `Insufficient data for reliable coaching. ${feedback?.reason || 'No clear movement data is available.'}`;
@@ -85,6 +89,7 @@ export function initProgressCoaching({ openMoment }) {
   async function render() {
     const request = ++token; stop(); hear.disabled = true; text = ''; body.replaceChildren();
     comparison.clear();
+    renderTraining();
     document.getElementById('coachSource').textContent = ''; status.textContent = 'Loading recordings…';
     try {
       const sessions = await store.listSessions();

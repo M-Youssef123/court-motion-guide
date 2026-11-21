@@ -41,7 +41,7 @@ export const prefs = {
 
 /* ------------------------------------------------------------------ IndexedDB basics */
 const DB_NAME = 'serve-coach';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 export const SCHEMA_VERSION = 3; // 3: session/clip stroke, hand and duration; linked analyses
 const BASE = () => ({ schemaVersion: SCHEMA_VERSION, ownerId: 'local', syncState: 'local-only', deletedAt: null });
 
@@ -72,6 +72,7 @@ function db() {
             });
           });
         }
+        if (!d.objectStoreNames.contains('drills')) d.createObjectStore('drills', { keyPath: 'id' });
         if (!d.objectStoreNames.contains('analyses')) {
           const analyses = d.createObjectStore('analyses', { keyPath: 'clipId' });
           analyses.createIndex('sessionId', 'sessionId');
@@ -306,6 +307,21 @@ export async function getPracticeData(sessionId) {
   }));
   return { ...session, recordings, notes: await listNotes(sessionId) };
 }
+export function getDrillCompletion(id) { return get('drills', id); }
+
+export function completeDrill(drillId, clipId) {
+  const id = JSON.stringify([drillId, clipId]);
+  return tx(['drills', 'clips'], 'readwrite', (t) => {
+    const drills = t.objectStore('drills');
+    t.objectStore('clips').get(clipId).onsuccess = ({ target }) => {
+      if (!target.result || target.result.deletedAt) { t.abort(); return; }
+      drills.get(id).onsuccess = (event) => {
+        if (!event.target.result) drills.add({ id, drillId, clipId, completedAt: nowIso(), schemaVersion: 1 });
+      };
+    };
+  });
+}
+
 /** Consistent metadata-only journal snapshot. Never opens video/chunk or raw pose stores. */
 export async function getJournalData() {
   const result = { sessions: [], clips: [], notes: [], analyses: [] };
@@ -327,26 +343,36 @@ export async function getJournalData() {
   });
   return result;
 }
+function deleteClipDrills(t, clipIds) {
+  t.objectStore('drills').openCursor().onsuccess = ({ target }) => {
+    const cursor = target.result;
+    if (!cursor) return;
+    if (clipIds.has(cursor.value.clipId)) cursor.delete();
+    cursor.continue();
+  };
+}
 /** Permanently delete a clip with its video and movement data (manual deletion, MVP1). */
 export async function deleteClip(clip) {
-  await tx(['clips', 'chunks', 'poses', 'sessions', 'analyses'], 'readwrite', (t) => {
+  await tx(['clips', 'chunks', 'poses', 'sessions', 'analyses', 'drills'], 'readwrite', (t) => {
     t.objectStore('clips').delete(clip.id);
     t.objectStore('chunks').delete(range(clip.id));
     t.objectStore('poses').delete(range(clip.id));
     t.objectStore('analyses').delete(clip.id);
+    deleteClipDrills(t, new Set([clip.id]));
     refreshSessionTotals(t, clip.sessionId);
   });
 }
 /** Permanently delete a whole session and all its clips. */
 export async function deleteSession(sessionId) {
   const clips = await getAll('clips', sessionId, 'sessionId');
-  await tx(['clips', 'chunks', 'poses', 'sessions', 'notes', 'analyses'], 'readwrite', (t) => {
+  await tx(['clips', 'chunks', 'poses', 'sessions', 'notes', 'analyses', 'drills'], 'readwrite', (t) => {
     clips.forEach((c) => {
       t.objectStore('clips').delete(c.id);
       t.objectStore('chunks').delete(range(c.id));
       t.objectStore('poses').delete(range(c.id));
       t.objectStore('analyses').delete(c.id);
     });
+    deleteClipDrills(t, new Set(clips.map(c => c.id)));
     t.objectStore('sessions').delete(sessionId);
     t.objectStore('notes').index('sessionId').openCursor(sessionId).onsuccess = (e) => {
       const cursor = e.target.result;
