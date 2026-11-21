@@ -2,7 +2,9 @@
 import { servingArm } from './contact-analysis.js';
 
 export const COACHING_VERSION = 1;
-export function buildCoachingInsights(clip, poses, analysis) {
+// Provisional camera-plane thresholds. Validate with annotated footage before tuning.
+export const SERVE_COACHING_RULES = Object.freeze({ reach: 135, preparation: 115, opening: 25, extension: 165 });
+export function buildCoachingInsights(clip, poses, analysis, rules = SERVE_COACHING_RULES) {
   const empty = (reason) => ({ version: COACHING_VERSION, status: 'insufficient', reason,
     positive: null, improvement: null, recommendation: null });
   const arm = servingArm(clip.dominantHand || clip.servingArm);
@@ -26,7 +28,7 @@ export function buildCoachingInsights(clip, poses, analysis) {
     return empty('The serving arm, head or torso was not tracked clearly enough around peak reach.');
   }
   const angle = analysis.frames?.[i]?.jointAngles?.[joint];
-  if (!Number.isFinite(angle) || angle <= 135 || angle > 180) return empty('The serving elbow angle is unclear.');
+  if (!Number.isFinite(angle) || angle <= rules.reach || angle > 180) return empty('The serving elbow angle is unclear.');
   const wrist = indices[2];
   if (!(poses[i].kp[wrist * 3 + 1] < poses[i].kp[1])
       || !(local[0].kp[wrist * 3 + 1] > local[1].kp[wrist * 3 + 1]
@@ -37,7 +39,7 @@ export function buildCoachingInsights(clip, poses, analysis) {
   for (let n = i - 1; n >= 0 && poses[i].t - poses[n].t <= 500; n--) {
     if (!clear(poses[n]) || poses[n + 1].t - poses[n].t > 200 || poses[n + 1].t <= poses[n].t) break;
     const a = analysis.frames?.[n]?.jointAngles?.[joint];
-    if (Number.isFinite(a) && a < 115 && angle - a >= 25) { preparation = n; break; }
+    if (Number.isFinite(a) && a < rules.preparation && angle - a >= rules.opening) { preparation = n; break; }
   }
   if (preparation < 0) return empty('The bent-arm preparation was not tracked clearly enough.');
   const offset = analysis.timebase?.videoOffsetMs;
@@ -50,8 +52,8 @@ export function buildCoachingInsights(clip, poses, analysis) {
   const item = (text) => ({ text, evidence });
   return { version: COACHING_VERSION, status: 'supported', reason: null,
     positive: item(`Your ${arm} serving arm opened from a bent preparation into overhead reach, with the wrist moving upward across three tracked frames.`),
-    improvement: angle < 165 ? item(`At estimated peak reach, your ${arm} elbow appeared partly bent (${angle.toFixed(0)}° in the camera view). Review whether you can reach more comfortably upward.`) : null,
-    recommendation: item(angle < 165
+    improvement: angle < rules.extension ? item(`At estimated peak reach, your ${arm} elbow appeared partly bent (${angle.toFixed(0)}° in the camera view). Review whether you can reach more comfortably upward.`) : null,
+    recommendation: item(angle < rules.extension
       ? 'Try a few slow shadow serves, reaching comfortably upward without forcing or locking the elbow. Compare your arm position with this recorded moment.'
       : 'Repeat a few relaxed shadow serves to maintain this bent-to-extended arm sequence, then compare the same phase in your next recording.'),
   };

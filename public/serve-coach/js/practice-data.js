@@ -2,7 +2,9 @@
 import { analyzeServeContact, servingArm } from './contact-analysis.js';
 import { buildCoachingInsights } from './coaching-insights.js';
 
-export const ANALYSIS_VERSION = 1;
+import { bodyOrientation, smoothMovement, wristMotion } from './movement-analysis.js';
+
+export const ANALYSIS_VERSION = 2;
 const MIN_CONFIDENCE = 0.35;
 const JOINTS = {
   leftElbow: [5, 7, 9], rightElbow: [6, 8, 10],
@@ -44,16 +46,18 @@ export function buildClipAnalysis(clip, frames, { arm = clip.dominantHand || cli
   const width = clip.video?.width, height = clip.video?.height;
   const strokeType = clip.strokeType || 'serve';
   const contact = strokeType === 'serve' ? analyzeServeContact(frames, { width, height, arm, offsetMs }) : null;
+  const smoothed = smoothMovement(frames);
   const analysis = {
-    schemaVersion: ANALYSIS_VERSION, algorithmVersion: 'serve-contact-v1',
+    schemaVersion: ANALYSIS_VERSION, algorithmVersion: 'movement-v2',
     clipId: clip.id, sessionId: clip.sessionId, strokeType, dominantHand: servingArm(arm),
     handSource: clip.dominantHand || clip.servingArm ? 'recorded' : servingArm(arm) ? 'replay-preference-fallback' : 'unknown',
     generatedAt: new Date().toISOString(),
     timebase: { pose: 'milliseconds since clip start', videoOffsetMs: offsetMs, offsetStatus: clip.sync?.offsetMs == null ? 'unresolved' : clip.sync.method || 'saved' },
     units: { jointAngles: 'degrees', speed: ['mph', 'km/h'], confidence: '0..1', timestamps: 'milliseconds' },
     landmarks: { store: 'poses', key: clip.id, model: clip.poses?.model || null, format: 'MoveNet-17 normalized x/y/confidence' },
-    frames: frames.map((frame) => frameMetrics(frame, width, height)),
+    frames: frames.map((frame, i) => ({ ...frameMetrics(frame, width, height), ...bodyOrientation(smoothed[i], width, height) })),
     metrics: {
+      wrist: wristMotion(smoothed, { width, height, arm: servingArm(arm) }),
       contact: contact ? { timestampMs: contact.contactTimestamp, poseTimestampMs: frames[contact.contactFrameIndex]?.t ?? null,
         frameIndex: contact.contactFrameIndex, elbowAngleDegrees: contact.elbowAngle, estimated: true } : null,
       swingSpeed: contact && contact.handSpeedMph !== null ? {

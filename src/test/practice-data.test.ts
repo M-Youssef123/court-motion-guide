@@ -79,7 +79,7 @@ describe('versioned local practice data', () => {
     const raw=frames();
     await store.putPoses(clip.id,0,raw);
     const analysis=await store.finalizeClipData(clip.id);
-    expect(analysis).toMatchObject({schemaVersion:1,clipId:clip.id,sessionId:session.id,strokeType:'serve',dominantHand:'right',handSource:'recorded',metrics:{contact:{timestampMs:1150,poseTimestampMs:800,elbowAngleDegrees:180,estimated:true}}});
+    expect(analysis).toMatchObject({schemaVersion:2,clipId:clip.id,sessionId:session.id,strokeType:'serve',dominantHand:'right',handSource:'recorded',metrics:{contact:{timestampMs:1150,poseTimestampMs:800,elbowAngleDegrees:180,estimated:true}}});
     const expected=(50+50+Math.hypot(10,70))*0.0025/0.1/3;
     expect(analysis.metrics.swingSpeed.handMph).toBeCloseTo(expected*2.237,8);
     expect(analysis.metrics.swingSpeed.racketMph).toBeCloseTo(expected*2.237*1.75,8);
@@ -105,7 +105,7 @@ describe('versioned local practice data', () => {
 
   it('stores unavailable values as null rather than invented zero measurements', () => {
     const analysis=buildClipAnalysis({id:'empty',sessionId:'practice',dominantHand:'right',video:{width:1000,height:1000}},[{t:123,kp:null}]);
-    expect(analysis.metrics).toEqual({contact:null,swingSpeed:null});
+    expect(analysis.metrics).toEqual({wrist:null,contact:null,swingSpeed:null});
     expect(frameMetrics({t:123,kp:null},1000,1000)).toMatchObject({t:123,trackingConfidence:null,jointAngles:{rightElbow:null}});
   });
 
