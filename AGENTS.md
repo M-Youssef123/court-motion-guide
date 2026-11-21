@@ -28,3 +28,5 @@ use the editor.
   own key and store it in Secrets.
 - **Secrets.** Lovable manages them. Do not put secret values in the repo.
 <!-- LOVABLE:END -->
+
+- Serve Coach lives as a static app in public/serve-coach (plain JS modules, IndexedDB clips); / redirects to it. Why: imported as-is from moonstudio-dev/Serve-tracker (integration/serve-coach) without a rewrite.
