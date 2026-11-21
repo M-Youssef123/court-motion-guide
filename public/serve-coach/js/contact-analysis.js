@@ -9,7 +9,8 @@ export function servingArm(value) {
 
 // Prefer recorded selection; never infer the serving arm from the tossing arm.
 export function resolveServingArm(clip, session, profile) {
-  return servingArm(clip?.servingArm) || servingArm(session?.hand) || servingArm(profile?.hand);
+  return servingArm(clip?.servingArm) || servingArm(clip?.dominantHand)
+    || servingArm(session?.dominantHand) || servingArm(session?.playerHand) || servingArm(session?.hand) || servingArm(profile?.hand);
 }
 
 export function extensionInsight(angle) {

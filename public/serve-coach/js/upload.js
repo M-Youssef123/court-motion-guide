@@ -82,13 +82,13 @@ export function initUpload({ openClip }) {
       if (aborted) throw new Error('cancelled');
       progress(1, 'Saving…');
       const profile = store.prefs.get(store.KEYS.profile);
-      session = await store.createSession(null, { source: 'upload' });
+      session = await store.createSession(null, { source: 'upload', playerHand: profile?.hand || null });
       const mime = file.type || 'video/mp4';
       clip = await store.createClip(session.id, {
         source: 'upload', fileName: file.name || '', status: 'saved',
         servingArm: resolveServingArm(null, session, profile),
         side: null, tripodPosition: 'unknown', camera: { facing: 'environment', label: 'Uploaded video' },
-        video: { mime, width: W, height: H, orientation: H > W ? 'portrait' : 'landscape', bytes: file.size, chunks: 0, durationMs: Math.round(dur * 1000) },
+        video: { mime, width: W, height: H, orientation: H > W ? 'portrait' : 'landscape', bytes: file.size, chunks: 0, durationMs: Math.round(dur * 1000), durationSource: 'video-metadata' },
         poses: { frames: frames.length, format: 'frames: t = ms of video time; kp = 17 x [x/width, y/height, score] in MoveNet order, or null when no pose', model: 'MoveNet SinglePose Lightning (pose-detection 2.1.3)', inputMode: 'upload', fps: SAMPLE_FPS },
         sync: { offsetMs: 0, method: 'upload', measuredAt: new Date().toISOString() },
       });
@@ -97,8 +97,11 @@ export function initUpload({ openClip }) {
       await store.putPoses(clip.id, 0, frames);
       await store.updateClip(clip.id, { endedAt: new Date().toISOString(), video: { ...clip.video, chunks: seq } });
       await store.endSession(session.id);
+      let analysisWarning = '';
+      try { await store.finalizeClipData(clip.id); }
+      catch (e) { analysisWarning = 'Video and movement saved, but extra measurements couldn’t be saved. Reopen the app to retry.'; }
       done();
-      show(tracked ? '' : 'Video saved, but no body was found in it, so there’s no skeleton or analysis.', tracked ? '' : 'warn');
+      show(analysisWarning || (tracked ? '' : 'Video saved, but no body was found in it, so there’s no skeleton or analysis.'), analysisWarning || !tracked ? 'warn' : '');
       openClip(clip.id);
     } catch (e) {
       if (session) { try { if (clip) await store.deleteClip(clip); await store.deleteSession(session.id); } catch (x) { /* ignore */ } }

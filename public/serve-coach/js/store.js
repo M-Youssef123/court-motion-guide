@@ -2,20 +2,24 @@
  * store.js — persistence. Everything stays on this device.
  *
  * LocalStorage: small preferences (KEYS / prefs).
- * IndexedDB ("serve-coach"): practice sessions, clips, video chunks and movement data.
+ * IndexedDB ("serve-coach"): sessions, clips, video chunks, movement, analyses and notes.
  *
- * Data model (schemaVersion 1)
+ * Data model (schemaVersion 3; analysis records have their own schema/algorithm version)
  *   sessions  { id, createdAt, endedAt, status: 'active'|'ended', plan, clipCount, ... }
  *   clips     { id, sessionId, seq, createdAt, endedAt, status: 'recording'|'saved'|'interrupted',
  *               side, camera{facing,label}, video{mime,width,height,bitrateRequested,bytes,chunks,durationMs},
  *               poses{frames,format,model,backend,inputMode,fps}, sync{offsetMs,method,measuredAt}, stopReason }
  *   chunks    { clipId, seq, blob }        video in ~2 s pieces, written while recording
  *   poses     { clipId, seq, frames:[{t, kp}] }  t = ms since clip start; kp = 17 × [x/width, y/height, score] or null
+ *   analyses  { clipId, sessionId, schemaVersion, algorithmVersion, timebase, frames:[{t, trackingConfidence, jointAngles}], metrics }
  *
  * Cloud-ready choices (see MVP1 feasibility): random UUIDs, schemaVersion on every record,
  * video stored as ordered chunks, keypoints normalised to the recorded frame, soft-delete
  * marker (deletedAt), and owner/sync placeholders. UI code uses only the functions below.
  */
+
+import { buildClipAnalysis, ANALYSIS_VERSION } from './practice-data.js';
+import { servingArm } from './contact-analysis.js';
 
 export const KEYS = {
   cfg: 'sc-cfg',       // { hand: 'R'|'L', side: 'deuce'|'ad' }
@@ -36,8 +40,8 @@ export const prefs = {
 
 /* ------------------------------------------------------------------ IndexedDB basics */
 const DB_NAME = 'serve-coach';
-const DB_VERSION = 2;
-export const SCHEMA_VERSION = 2; // 2: clips carry tripodPosition and video.orientation
+const DB_VERSION = 3;
+export const SCHEMA_VERSION = 3; // 3: session/clip stroke, hand and duration; linked analyses
 const BASE = () => ({ schemaVersion: SCHEMA_VERSION, ownerId: 'local', syncState: 'local-only', deletedAt: null });
 
 let dbPromise = null;
@@ -66,6 +70,24 @@ function db() {
               createdAt: nowIso(), updatedAt: nowIso(), source: 'legacy',
             });
           });
+        }
+        if (!d.objectStoreNames.contains('analyses')) {
+          const analyses = d.createObjectStore('analyses', { keyPath: 'clipId' });
+          analyses.createIndex('sessionId', 'sessionId');
+          const transaction = req.transaction;
+          if (transaction) {
+            transaction.objectStore('sessions').openCursor().onsuccess = (e) => {
+              const cursor = e.target.result;
+              if (!cursor) return;
+              const session = sessionRecord(cursor.value);
+              transaction.objectStore('clips').index('sessionId').getAll(session.id).onsuccess = (event) => {
+                const clips = event.target.result;
+                transaction.objectStore('sessions').put({ ...session, recordingDurationMs: totalDuration(clips) });
+                clips.forEach((clip) => transaction.objectStore('clips').put(clipRecord(clip, session)));
+              };
+              cursor.continue();
+            };
+          }
         }
       };
       req.onsuccess = () => {
@@ -113,9 +135,34 @@ export function uuid() {
 const nowIso = () => new Date().toISOString();
 const tz = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch (e) { return ''; } };
 
+function sessionRecord(session) {
+  return { ...session, schemaVersion: SCHEMA_VERSION, date: session.date || session.createdAt || null,
+    dominantHand: servingArm(session.dominantHand || session.playerHand || session.hand),
+    strokeType: session.strokeType || 'serve', recordingDurationMs: session.recordingDurationMs ?? 0 };
+}
+function clipRecord(clip, session) {
+  return { ...clip, schemaVersion: SCHEMA_VERSION, strokeType: clip.strokeType || session?.strokeType || 'serve',
+    dominantHand: servingArm(clip.dominantHand || clip.servingArm || session?.dominantHand),
+    recordingDurationMs: clip.video?.durationMs ?? clip.recordingDurationMs ?? 0 };
+}
+function totalDuration(clips) {
+  return clips.filter((c) => !c.deletedAt).reduce((sum, c) => sum + (Number.isFinite(c.video?.durationMs) ? Math.max(0, c.video.durationMs) : 0), 0);
+}
+function refreshSessionTotals(t, sessionId) {
+  t.objectStore('clips').index('sessionId').getAll(sessionId).onsuccess = (e) => {
+    const clips = e.target.result.filter((c) => !c.deletedAt);
+    const sessions = t.objectStore('sessions');
+    sessions.get(sessionId).onsuccess = (event) => {
+      const session = event.target.result;
+      if (session) sessions.put({ ...sessionRecord(session), recordingDurationMs: totalDuration(clips), clipCount: clips.length });
+    };
+  };
+}
+
 /* ------------------------------------------------------------------ sessions */
 export async function createSession(plan = null, extra = {}) {
-  const s = { ...BASE(), id: uuid(), createdAt: nowIso(), timeZone: tz(), endedAt: null, status: 'active', plan, clipCount: 0, ...extra };
+  const s = sessionRecord({ ...BASE(), id: uuid(), createdAt: nowIso(), timeZone: tz(), endedAt: null, status: 'active', plan, clipCount: 0,
+    dominantHand: servingArm(extra.dominantHand || extra.playerHand || extra.hand || prefs.get(KEYS.profile)?.hand), ...extra });
   await tx('sessions', 'readwrite', (t) => t.objectStore('sessions').put(s));
   return s;
 }
@@ -180,24 +227,28 @@ export async function deleteNote(id) {
 
 /* ------------------------------------------------------------------ clips */
 export async function createClip(sessionId, fields) {
+  const session = await getSession(sessionId);
+  if (!session || session.deletedAt) throw new Error('Practice session no longer exists.');
   const existing = await getAll('clips', sessionId, 'sessionId');
   const seq = existing.reduce((m, c) => Math.max(m, c.seq || 0), 0) + 1;
-  const clip = {
+  const clip = clipRecord({
     ...BASE(), id: uuid(), sessionId, seq, createdAt: nowIso(), endedAt: null, status: 'recording',
     uploadConsent: false, sync: { offsetMs: null, method: null, measuredAt: null }, ...fields,
-  };
+  }, session);
   await tx(['clips', 'sessions'], 'readwrite', (t) => {
     t.objectStore('clips').put(clip);
-    const os = t.objectStore('sessions');
-    os.get(sessionId).onsuccess = (e) => { const s = e.target.result; if (s) os.put({ ...s, clipCount: (s.clipCount || 0) + 1 }); };
+    refreshSessionTotals(t, sessionId);
   });
   return clip;
 }
 export async function getClip(id) { return get('clips', id); }
 export async function updateClip(id, changes) {
-  return tx('clips', 'readwrite', (t) => {
+  return tx(['clips', 'sessions'], 'readwrite', (t) => {
     const os = t.objectStore('clips');
-    os.get(id).onsuccess = (e) => { const c = e.target.result; if (c) os.put({ ...c, ...changes }); };
+    os.get(id).onsuccess = (e) => {
+      const c = e.target.result;
+      if (c) { os.put(clipRecord({ ...c, ...changes })); refreshSessionTotals(t, c.sessionId); }
+    };
   });
 }
 export function putChunk(clipId, seq, blob) {
@@ -216,24 +267,63 @@ export async function getClipPoses(clipId) {
   const batches = (await getAll('poses', range(clipId))).sort((a, b) => a.seq - b.seq);
   return batches.flatMap((b) => b.frames).sort((a, b) => a.t - b.t);
 }
+
+/** Save derived metrics separately from raw pose/video chunks; all records share clipId. */
+export async function getClipAnalysis(clipId) { return get('analyses', clipId); }
+export async function finalizeClipData(clipId, options = {}) {
+  const clip = await getClip(clipId);
+  if (!clip || clip.deletedAt || clip.status === 'recording') return null;
+  const frames = await getClipPoses(clipId);
+  const analysis = buildClipAnalysis(clip, frames, options);
+  await tx(['clips', 'analyses'], 'readwrite', (t) => {
+    t.objectStore('clips').get(clipId).onsuccess = (e) => {
+      if (e.target.result && !e.target.result.deletedAt) t.objectStore('analyses').put(analysis);
+    };
+  });
+  return analysis;
+}
+/** Legacy/recovered saved clips gain metrics from existing frames, never current camera/profile. */
+export async function backfillPracticeData() {
+  const clips = (await getAll('clips')).filter((c) => !c.deletedAt && c.status !== 'recording');
+  const failures = [];
+  for (const clip of clips) {
+    try {
+      const analysis = await getClipAnalysis(clip.id);
+      if (!analysis || analysis.schemaVersion !== ANALYSIS_VERSION) await finalizeClipData(clip.id);
+    } catch (e) { failures.push({ clipId: clip.id, error: e.name || 'StorageError' }); }
+  }
+  return failures;
+}
+/** Extensible coaching/export input. Raw landmarks stay normalized; missing metrics stay null. */
+export async function getPracticeData(sessionId) {
+  const session = await getSession(sessionId);
+  if (!session || session.deletedAt) return null;
+  const clips = await getSessionClips(sessionId);
+  const recordings = await Promise.all(clips.map(async (clip) => {
+    const [poseFrames, analysis] = await Promise.all([getClipPoses(clip.id), getClipAnalysis(clip.id)]);
+    return { ...clip, poseFrames, analysis: analysis || null, videoReference: { clipId: clip.id, store: 'chunks' } };
+  }));
+  return { ...session, recordings, notes: await listNotes(sessionId) };
+}
 /** Permanently delete a clip with its video and movement data (manual deletion, MVP1). */
 export async function deleteClip(clip) {
-  await tx(['clips', 'chunks', 'poses', 'sessions'], 'readwrite', (t) => {
+  await tx(['clips', 'chunks', 'poses', 'sessions', 'analyses'], 'readwrite', (t) => {
     t.objectStore('clips').delete(clip.id);
     t.objectStore('chunks').delete(range(clip.id));
     t.objectStore('poses').delete(range(clip.id));
-    const os = t.objectStore('sessions');
-    os.get(clip.sessionId).onsuccess = (e) => { const s = e.target.result; if (s) os.put({ ...s, clipCount: Math.max(0, (s.clipCount || 1) - 1) }); };
+    t.objectStore('analyses').delete(clip.id);
+    refreshSessionTotals(t, clip.sessionId);
   });
 }
 /** Permanently delete a whole session and all its clips. */
 export async function deleteSession(sessionId) {
   const clips = await getAll('clips', sessionId, 'sessionId');
-  await tx(['clips', 'chunks', 'poses', 'sessions', 'notes'], 'readwrite', (t) => {
+  await tx(['clips', 'chunks', 'poses', 'sessions', 'notes', 'analyses'], 'readwrite', (t) => {
     clips.forEach((c) => {
       t.objectStore('clips').delete(c.id);
       t.objectStore('chunks').delete(range(c.id));
       t.objectStore('poses').delete(range(c.id));
+      t.objectStore('analyses').delete(c.id);
     });
     t.objectStore('sessions').delete(sessionId);
     t.objectStore('notes').index('sessionId').openCursor(sessionId).onsuccess = (e) => {
@@ -260,7 +350,7 @@ export async function recoverUnfinishedClips(exceptClipId = null) {
       status: bytes > 10000 ? 'interrupted' : 'interrupted-empty',
       endedAt: c.endedAt || nowIso(),
       stopReason: 'app closed or crashed while recording',
-      video: { ...(c.video || {}), bytes, chunks: chunks.length, durationMs: Math.max(lastT, chunks.length * 2000) },
+      video: { ...(c.video || {}), bytes, chunks: chunks.length, durationMs: Math.max(lastT, chunks.length * 2000), durationSource: 'recovered-estimate' },
       poses: { ...(c.poses || {}), frames: frames.length },
     });
   }

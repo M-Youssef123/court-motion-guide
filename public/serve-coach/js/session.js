@@ -174,12 +174,17 @@ export class PracticeSession {
           status: interrupted ? 'interrupted' : 'saved',
           endedAt: new Date().toISOString(),
           stopReason: reason,
-          video: { mime: rec.mime, width: c.width, height: c.height, orientation: c.height > c.width ? 'portrait' : 'landscape', bitrateRequested: BITRATE, bytes: rec.bytes, chunks: rec.seq, durationMs },
+          video: { mime: rec.mime, width: c.width, height: c.height, orientation: c.height > c.width ? 'portrait' : 'landscape', bitrateRequested: BITRATE, bytes: rec.bytes, chunks: rec.seq, durationMs, durationSource: 'recording-clock' },
           poses: { ...c.poses, frames: c.poseFrames, fps: durationMs ? +(c.poseFrames * 1000 / durationMs).toFixed(1) : null },
           writeErrors: c.writeErrors,
         };
         saved = { ...c, ...changes };
         await store.updateClip(c.id, changes);
+        try { await store.finalizeClipData(c.id); }
+        catch (error) {
+          c.writeErrors.push('analysis ' + (error.name || 'StorageError'));
+          await store.updateClip(c.id, { writeErrors: c.writeErrors });
+        }
       }
       } catch (e) {
         // Couldn't write the final details (e.g. storage full). The video and movement already

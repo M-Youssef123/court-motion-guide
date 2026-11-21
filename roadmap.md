@@ -17,3 +17,8 @@
 - [x] Add local, session-linked note storage and preserve existing notes.
 - [x] Enable saving, editing and deleting notes in My notes.
 - [x] Test persistence and session associations; verify the full notes workflow.
+
+# Versioned practice data
+- [x] Store session identity, date, recorded hand, duration and stroke type with safe legacy upgrades.
+- [x] Persist timestamped tracking confidence, joint angles and available swing estimates linked to original clips.
+- [x] Finalize live, uploaded and recovered recordings; test reload persistence and replay compatibility.

@@ -350,6 +350,11 @@ export function initReplay({ onDeleted } = {}) {
     setControls(true);
     startSync();
     redraw();
+    // Persist the same contact-local estimates shown here after pose/video alignment.
+    // Legacy preference fallback remains marked in the analysis, not rewritten into capture data.
+    store.finalizeClipData(clip.id, { arm: selectedArm, offsetMs }).catch(() => {
+      if (token === openToken) $('rpStatus').textContent = 'Video is saved, but extra measurements couldn’t be saved. Reopen this clip to retry.';
+    });
   }
 
   function leave() { openToken++; calibrating = false; release(); }

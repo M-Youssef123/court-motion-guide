@@ -408,5 +408,5 @@ $('sessions').innerHTML = exampleSessions.map((s) => {
   return '<li class="sess"><div class="sess-top"><b>' + s.d + '</b><span class="chip ' + s.chip + '">' + s.main + '</span></div><div class="balls" role="img" aria-label="' + ins + ' of 10 serves in, ' + s.f.length + ' flagged">' + balls + '</div></li>';
 }).join('');
 
-recoverUnfinishedClips().then(markUnknownTripodPositions).catch(() => {}); // clips left 'recording' by a crash/closed tab → kept as interrupted
+recoverUnfinishedClips().then(markUnknownTripodPositions).then(store.backfillPracticeData).catch(() => {}); // recover/backfill saved data on-device without rerunning body tracking
 route();
