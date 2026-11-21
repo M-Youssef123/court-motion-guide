@@ -92,3 +92,8 @@ describe("upload media readiness", () => {
     await expect(seekUploadVideo(video, 0.4, { timeoutMs: 5 })).rejects.toThrow("stopped decoding");
   });
 });
+
+it("accepts a generic MIME type for a camera MOV but rejects an unrelated file", () => {
+  expect(uploadProblem({ type: "application/octet-stream", name: "Serve.MOV", size: 100 })).toBeNull();
+  expect(uploadProblem({ type: "", name: "notes.txt", size: 100 })).toMatch(/isn’t a video/);
+});

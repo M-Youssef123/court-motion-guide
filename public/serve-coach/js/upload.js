@@ -12,6 +12,14 @@ import { openUploadVideo, seekUploadVideo } from './upload-media.js';
 export const MAX_UPLOAD_MB = 500;
 export const MAX_UPLOAD_SECONDS = 120;
 export const SAMPLE_FPS = 15;
+const VIDEO_TYPES = { mp4: 'video/mp4', m4v: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', ogv: 'video/ogg', '3gp': 'video/3gpp' };
+const MAX_MODEL_EDGE = 640;
+export function uploadMime(file) {
+  if (file.type?.startsWith('video/')) return file.type;
+  if (file.type && file.type !== 'application/octet-stream') return '';
+  return VIDEO_TYPES[(file.name || '').split('.').pop().toLowerCase()] || '';
+}
+
 const CHUNK = 4 * 1024 * 1024;
 
 const $ = (id) => document.getElementById(id);
@@ -19,7 +27,7 @@ const $ = (id) => document.getElementById(id);
 /** Why a picked file can't be used (or null). Pure; exported for tests. */
 export function uploadProblem(file) {
   if (!file) return 'No video was chosen.';
-  if (file.type && !file.type.startsWith('video/')) return 'That file isn’t a video. Choose a video from your device.';
+  if (!uploadMime(file)) return 'That file isn’t a video. Choose a video from your device.';
   if (file.size === 0) return 'That video file is empty.';
   if (file.size > MAX_UPLOAD_MB * 1024 * 1024) return `That video is too large (over ${MAX_UPLOAD_MB} MB). Trim it to just your serves and try again.`;
   return null;
@@ -35,7 +43,7 @@ export function initUpload({ openClip }) {
 
   btn.addEventListener('click', () => { if (!busy) input.click(); });
   cancel.addEventListener('click', () => { aborted = true; controller?.abort(); });
-  input.addEventListener('change', () => { const f = input.files && input.files[0]; if (f) run(f); });
+  input.addEventListener('change', () => { const f = input.files && input.files[0]; if (f && !busy) run(f); });
 
   async function run(file) {
     const problem = uploadProblem(file);
@@ -43,7 +51,8 @@ export function initUpload({ openClip }) {
     busy = true; aborted = false; controller = new AbortController(); show('');
     btn.disabled = true; btn.setAttribute('aria-busy', 'true');
     progress(0, 'Opening video…');
-    const url = URL.createObjectURL(file);
+    const mime = uploadMime(file);
+    const url = URL.createObjectURL(file.type === mime ? file : file.slice(0, file.size, mime));
     const v = document.createElement('video');
     v.muted = true; v.playsInline = true; v.preload = 'auto'; v.setAttribute('playsinline', '');
     v.setAttribute('webkit-playsinline', '');
@@ -52,6 +61,7 @@ export function initUpload({ openClip }) {
     v.style.cssText = 'display:block;width:100%;height:180px;object-fit:contain;pointer-events:none;margin-block:8px';
     box.appendChild(v);
     let session = null, clip = null;
+    const canvas = document.createElement('canvas');
     try {
       await openUploadVideo(v, url, { signal: controller.signal });
       const dur = v.duration;
@@ -62,6 +72,11 @@ export function initUpload({ openClip }) {
 
       progress(0, 'Loading body tracking…');
       const W = v.videoWidth, H = v.videoHeight;
+      const scale = Math.min(1, MAX_MODEL_EDGE / Math.max(W, H));
+      canvas.width = Math.max(1, Math.round(W * scale));
+      canvas.height = Math.max(1, Math.round(H * scale));
+      const ctx = canvas.getContext('2d', { alpha: false });
+      if (!ctx) throw new Error('Couldn’t prepare a video frame on this device.');
       const frames = [];
       const n = Math.max(1, Math.floor(dur * SAMPLE_FPS));
       let tracked = 0;
@@ -70,9 +85,12 @@ export function initUpload({ openClip }) {
         const t = Math.min(dur - 0.001, i / SAMPLE_FPS);
         await seekUploadVideo(v, t, { signal: controller.signal });
         let p = null;
-        try { p = await estimateFrame(v); } catch (e) { if (i === 0) throw new Error('Body tracking couldn’t start on this device.'); }
-        const kp = p && p.keypoints ? p.keypoints.flatMap((k) => [+(k.x / W).toFixed(4), +(k.y / H).toFixed(4), +(k.score || 0).toFixed(3)]) : null;
-        if (kp) tracked++;
+        try {
+          ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+          p = await estimateFrame(canvas);
+        } catch (e) { if (i === 0) throw new Error('Body tracking couldn’t start on this device.'); }
+        const kp = p && p.keypoints ? p.keypoints.flatMap((k) => [+(k.x / canvas.width).toFixed(4), +(k.y / canvas.height).toFixed(4), +(k.score || 0).toFixed(3)]) : null;
+        if (p?.keypoints.filter((k) => k.score >= 0.35).length >= 5) tracked++;
         frames.push({ t: Math.round(t * 1000), kp });
         progress((i + 1) / (n + 1), `Analysing movement… ${Math.round(((i + 1) / (n + 1)) * 100)}%`);
       }
@@ -80,9 +98,8 @@ export function initUpload({ openClip }) {
       progress(1, 'Saving…');
       const profile = store.prefs.get(store.KEYS.profile);
       session = await store.createSession(null, { source: 'upload', playerHand: profile?.hand || null });
-      const mime = file.type || 'video/mp4';
       clip = await store.createClip(session.id, {
-        source: 'upload', fileName: file.name || '', status: 'saved',
+        source: 'upload', fileName: file.name || '', status: 'recording',
         servingArm: resolveServingArm(null, session, profile),
         side: null, tripodPosition: 'unknown', camera: { facing: 'environment', label: 'Uploaded video' },
         video: { mime, width: W, height: H, orientation: H > W ? 'portrait' : 'landscape', bytes: file.size, chunks: 0, durationMs: Math.round(dur * 1000), durationSource: 'video-metadata' },
@@ -90,9 +107,13 @@ export function initUpload({ openClip }) {
         sync: { offsetMs: 0, method: 'upload', measuredAt: new Date().toISOString() },
       });
       let seq = 0;
-      for (let o = 0; o < file.size; o += CHUNK) await store.putChunk(clip.id, seq++, file.slice(o, o + CHUNK, mime));
+      for (let o = 0; o < file.size; o += CHUNK) {
+        if (aborted) throw new Error('cancelled');
+        await store.putChunk(clip.id, seq++, file.slice(o, o + CHUNK, mime));
+      }
       await store.putPoses(clip.id, 0, frames);
-      await store.updateClip(clip.id, { endedAt: new Date().toISOString(), video: { ...clip.video, chunks: seq } });
+      if (aborted) throw new Error('cancelled');
+      await store.updateClip(clip.id, { status: 'saved', endedAt: new Date().toISOString(), video: { ...clip.video, chunks: seq } });
       await store.endSession(session.id);
       let analysisWarning = '';
       try { await store.finalizeClipData(clip.id); }
@@ -107,6 +128,7 @@ export function initUpload({ openClip }) {
       else if (e && e.name === 'QuotaExceededError') show('Not enough free storage on this phone to keep this video.', 'error');
       else show((e && e.message) || 'Something went wrong processing this video. Please try again.', 'error');
     } finally {
+      canvas.width = canvas.height = 1;
       v.removeAttribute('src'); v.load(); v.remove(); URL.revokeObjectURL(url);
       controller = null;
     }
