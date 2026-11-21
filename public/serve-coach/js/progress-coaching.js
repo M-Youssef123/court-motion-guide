@@ -1,5 +1,6 @@
 import * as store from './store.js';
 import { COACHING_VERSION } from './coaching-insights.js';
+import { initPhaseComparison } from './phase-comparison.js';
 
 const HEAR_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/></svg>';
 const STOP_ICON = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
@@ -13,6 +14,7 @@ export function initProgressCoaching({ openMoment }) {
     <div class="block" id="coachBody"></div>
     <button class="btn btn-quiet" type="button" id="hearBtn" disabled aria-pressed="false">${HEAR_ICON}Hear it</button>
     <p class="kicker">Observations are estimates from body tracking in this camera view. Ball accuracy, ball impact and measured racket speed cannot be determined.</p>`;
+  const comparison = initPhaseComparison(host);
   const notice = document.querySelector('#progress > .notice');
   notice.textContent = 'Example comparisons and sessions below are illustrations, not your data.';
   document.getElementById('cmpH').parentElement.before(notice);
@@ -37,6 +39,7 @@ export function initProgressCoaching({ openMoment }) {
   window.addEventListener('hashchange', () => { if (location.hash !== '#progress') { token++; stop(); } });
   async function load(id) {
     const request = ++token; stop(); text = ''; hear.disabled = true; body.replaceChildren();
+    comparison.clear();
     status.textContent = 'Reading saved movement data…'; selected = id;
     try {
       const clip = await store.getClip(id);
@@ -44,6 +47,7 @@ export function initProgressCoaching({ openMoment }) {
       let analysis = await store.getClipAnalysis(id);
       if (analysis?.coaching?.version !== COACHING_VERSION) analysis = await store.finalizeClipData(id);
       if (request !== token) return;
+      comparison.load(clip);
       const feedback = analysis?.coaching;
       document.getElementById('coachSource').textContent = `${new Date(clip.createdAt).toLocaleString()} · ${clip.source === 'upload' ? 'Uploaded footage' : 'Recorded practice'}`;
       if (feedback?.status !== 'supported') {
@@ -83,6 +87,7 @@ export function initProgressCoaching({ openMoment }) {
   select.addEventListener('change', () => load(select.value));
   async function render() {
     const request = ++token; stop(); hear.disabled = true; text = ''; body.replaceChildren();
+    comparison.clear();
     document.getElementById('coachSource').textContent = ''; status.textContent = 'Loading recordings…';
     try {
       const sessions = await store.listSessions();
