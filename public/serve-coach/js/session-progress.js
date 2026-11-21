@@ -82,6 +82,15 @@ export function initSessionProgress() {
         bar.min = 0; bar.max = 180; bar.value = row.mean;
         label.append(bar);
         graph.append(label);
+        if (row.spread !== null) {
+          const spread = document.createElement('label');
+          spread.className = 'sess';
+          spread.textContent = `${dateLabel(row.session)} · Variation across clips ${round(row.spread)}° `;
+          const variation = document.createElement('meter');
+          variation.min = 0; variation.max = 90; variation.value = row.spread;
+          spread.append(variation);
+          graph.append(spread);
+        }
       }
       list.replaceChildren();
       for (const session of data.sessions.sort((a, b) => b.createdAt.localeCompare(a.createdAt))) {

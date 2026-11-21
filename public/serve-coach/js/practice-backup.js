@@ -15,7 +15,7 @@ export function buildBackup(records) {
 }
 
 export function validateBackup(backup) {
-  if (backup?.format !== BACKUP_FORMAT || backup.version !== BACKUP_VERSION || backup.media !== 'metadata-only') {
+  if (backup?.format !== BACKUP_FORMAT || backup.version !== BACKUP_VERSION || backup.media !== 'metadata-only' || !date(backup.createdAt)) {
     throw new Error('Choose a supported Serve Coach JSON practice backup.');
   }
   const records = {};
@@ -77,7 +77,9 @@ export function validateBackup(backup) {
   records.analyses = records.clips.map((clip) => {
     const saved = prior.get(clip.id);
     const arm = saved?.handSource === 'replay-preference-fallback' ? saved.dominantHand : undefined;
-    return buildClipAnalysis(clip, frames.get(clip.id) || [], arm ? { arm } : undefined);
+    const savedOffset = saved?.timebase?.videoOffsetMs;
+    const offsetMs = clip.sync?.offsetMs ?? (number(savedOffset, -60000, 60000) ? savedOffset : 0);
+    return buildClipAnalysis(clip, frames.get(clip.id) || [], { ...(arm ? { arm } : {}), offsetMs });
   });
   return records;
 }

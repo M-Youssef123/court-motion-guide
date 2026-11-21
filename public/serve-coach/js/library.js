@@ -18,7 +18,7 @@ const camName = (c) => (c && c.facing === 'user' ? 'Front' : 'Rear');
 const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const standalone = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 
-export function initLibrary({ openClip }) {
+export function initLibrary({ openClip, onDeleted }) {
   let token = 0;
 
   async function render() {
@@ -115,6 +115,7 @@ export function initLibrary({ openClip }) {
         clearTimeout(t);
         await store.deleteSession(s.id);
         render();
+        onDeleted?.();
       });
       li.appendChild(del);
     }

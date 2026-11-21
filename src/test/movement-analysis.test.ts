@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 // @ts-expect-error plain JS module
 import { bodyOrientation, smoothMovement, wristMotion } from '../../public/serve-coach/js/movement-analysis.js';
 
-function frame(t, points) {
+function frame(t: number, points: [number, number, number, number?][]) {
   const kp = Array(51).fill(0);
   for (const [i, x, y, score = 0.9] of points) kp.splice(i * 3, 3, x, y, score);
   return { t, kp };

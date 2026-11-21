@@ -12,12 +12,13 @@ import { openUploadVideo, seekUploadVideo } from './upload-media.js';
 export const MAX_UPLOAD_MB = 500;
 export const MAX_UPLOAD_SECONDS = 120;
 export const SAMPLE_FPS = 15;
-const VIDEO_TYPES = { mp4: 'video/mp4', m4v: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', ogv: 'video/ogg', '3gp': 'video/3gpp' };
+const VIDEO_TYPES = { mp4: 'video/mp4', m4v: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', mkv: 'video/x-matroska', ogv: 'video/ogg', '3gp': 'video/3gpp' };
 const MAX_MODEL_EDGE = 640;
 export function uploadMime(file) {
   if (file.type?.startsWith('video/')) return file.type;
   if (file.type && file.type !== 'application/octet-stream') return '';
-  return VIDEO_TYPES[(file.name || '').split('.').pop().toLowerCase()] || '';
+  const extension = (file.name || '').match(/\.([^.]+)$/)?.[1].toLowerCase();
+  return Object.prototype.hasOwnProperty.call(VIDEO_TYPES, extension) ? VIDEO_TYPES[extension] : '';
 }
 
 const CHUNK = 4 * 1024 * 1024;
@@ -38,7 +39,14 @@ export function initUpload({ openClip }) {
   let busy = false, aborted = false, controller = null;
 
   const show = (text, kind = '') => { msg.textContent = text; msg.dataset.kind = kind; msg.hidden = !text; };
-  const progress = (p, text) => { box.hidden = false; bar.style.width = Math.round(p * 100) + '%'; $('upPct').textContent = text; };
+  const progress = (p, text) => {
+    box.hidden = false;
+    const label = $('upPct');
+    if (label.textContent !== text) {
+      bar.style.width = Math.round(p * 100) + '%';
+      label.textContent = text;
+    }
+  };
   const done = () => { busy = false; box.hidden = true; btn.disabled = false; btn.removeAttribute('aria-busy'); input.value = ''; };
 
   btn.addEventListener('click', () => { if (!busy) input.click(); });
@@ -78,11 +86,11 @@ export function initUpload({ openClip }) {
       const ctx = canvas.getContext('2d', { alpha: false });
       if (!ctx) throw new Error('Couldn’t prepare a video frame on this device.');
       const frames = [];
-      const n = Math.max(1, Math.floor(dur * SAMPLE_FPS));
+      const n = Math.max(1, Math.ceil(dur * SAMPLE_FPS));
       let tracked = 0;
-      for (let i = 0; i <= n; i++) {
+      for (let i = 0; i < n; i++) {
         if (aborted) throw new Error('cancelled');
-        const t = Math.min(dur - 0.001, i / SAMPLE_FPS);
+        const t = i / SAMPLE_FPS;
         await seekUploadVideo(v, t, { signal: controller.signal });
         let p = null;
         try {
@@ -92,7 +100,7 @@ export function initUpload({ openClip }) {
         const kp = p && p.keypoints ? p.keypoints.flatMap((k) => [+(k.x / canvas.width).toFixed(4), +(k.y / canvas.height).toFixed(4), +(k.score || 0).toFixed(3)]) : null;
         if (p?.keypoints.filter((k) => k.score >= 0.35).length >= 5) tracked++;
         frames.push({ t: Math.round(t * 1000), kp });
-        progress((i + 1) / (n + 1), `Analysing movement… ${Math.round(((i + 1) / (n + 1)) * 100)}%`);
+        progress((i + 1) / n, `Analysing movement… ${Math.round(((i + 1) / n) * 100)}%`);
       }
       if (aborted) throw new Error('cancelled');
       progress(1, 'Saving…');

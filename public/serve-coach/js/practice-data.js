@@ -17,7 +17,8 @@ export function jointAngle(kp, indices, width, height) {
   if (!Array.isArray(kp) || !(width > 0) || !(height > 0)) return null;
   const points = indices.map((index) => {
     const x = kp[index * 3], y = kp[index * 3 + 1], score = kp[index * 3 + 2];
-    return Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(score) && score >= MIN_CONFIDENCE
+    return Number.isFinite(x) && x >= 0 && x <= 1 && Number.isFinite(y) && y >= 0 && y <= 1
+      && Number.isFinite(score) && score >= MIN_CONFIDENCE && score <= 1
       ? { x: x * width, y: y * height } : null;
   });
   const [a, b, c] = points;

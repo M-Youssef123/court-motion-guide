@@ -290,7 +290,10 @@ const replay = initReplay();
 const renderProgress = initSessionProgress();
 const coaching = initProgressCoaching({ openMoment: (id, poseMs) => replay.openMoment(id, poseMs) });
 initUpload({ openClip: (id) => replay.open(id) });
-const library = initLibrary({ openClip: (id) => replay.open(id) });
+const library = initLibrary({
+  openClip: (id) => replay.open(id),
+  onDeleted: () => { coaching.render(); renderProgress(); },
+});
 const notes = initNotes();
 initJournalExport();
 initBackupControls(() => { library.render(); notes.render(); coaching.render(); renderProgress(); });
