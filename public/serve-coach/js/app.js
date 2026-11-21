@@ -24,6 +24,7 @@ import * as store from './store.js';
 import { initDebug } from './debug.js';
 import { initUpload } from './upload.js';
 import { initNotes } from './notes.js';
+import { initBackupControls } from './backup-controls.js';
 import { initJournalExport } from './journal-export.js';
 import { initSessionProgress } from './session-progress.js';
 import { initProgressCoaching } from './progress-coaching.js';
@@ -292,6 +293,7 @@ initUpload({ openClip: (id) => replay.open(id) });
 const library = initLibrary({ openClip: (id) => replay.open(id) });
 const notes = initNotes();
 initJournalExport();
+initBackupControls(() => { library.render(); notes.render(); coaching.render(); renderProgress(); });
 const record = initRecord({ debug, openClip: (id) => replay.open(id, 'record') });
 const practice = initPractice({
   getHand: () => profile().hand || null,

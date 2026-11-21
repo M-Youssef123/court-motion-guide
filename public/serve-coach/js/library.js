@@ -93,11 +93,12 @@ export function initLibrary({ openClip }) {
       const meta = document.createElement('span');
       meta.textContent = c.source === 'upload' ? `Uploaded video${c.fileName ? ' · ' + c.fileName : ''} · ${fmtTime((c.video && c.video.durationMs) || 0)}` : `Tripod ${tripodName(c.tripodPosition)} · ${camName(c.camera)} camera · ${fmtTime((c.video && c.video.durationMs) || 0)}` +
         (c.status === 'interrupted-empty' ? ' · no video saved' : c.status === 'interrupted' ? ' · interrupted' : '');
-      const go = document.createElement('span'); go.className = 'lib-go'; go.textContent = 'Replay ›';
+      const go = document.createElement('span'); go.className = 'lib-go'; go.textContent = c.restoredWithoutVideo ? 'Analysis only' : 'Replay ›';
+      btn.disabled = Boolean(c.restoredWithoutVideo);
       btn.append(name, meta, go);
       btn.addEventListener('click', () => openClip(c.id));
       row.appendChild(btn);
-      if (c.status !== 'interrupted-empty') row.appendChild(saveBar(c));
+      if (c.status !== 'interrupted-empty' && !c.restoredWithoutVideo) row.appendChild(saveBar(c));
       ul.appendChild(row);
     });
     li.appendChild(ul);

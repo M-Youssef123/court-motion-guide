@@ -69,10 +69,12 @@ export function initProgressCoaching({ openMoment }) {
           const source = document.createElement('p'); source.className = 'kicker';
           source.textContent = `Saved frame ${e.frameIndex + 1} · minimum landmark confidence ${Math.round(e.minLandmarkConfidence * 100)}%`;
           section.append(source);
-          if (Number.isFinite(e.timestampMs)) {
+          if (Number.isFinite(e.timestampMs) && !clip.restoredWithoutVideo) {
             const b = document.createElement('button'); b.className = 'btn btn-quiet'; b.type = 'button';
             b.textContent = `▶ View estimated moment · ${(e.timestampMs / 1000).toFixed(3)} s`;
             b.addEventListener('click', () => { stop(); openMoment(id, e.poseTimestampMs); }); section.append(b);
+          } else if (clip.restoredWithoutVideo) {
+            source.textContent += ' · Restored analysis without video.';
           } else {
             source.textContent += ' · Video timing is not aligned yet; open Replay to align it.';
           }

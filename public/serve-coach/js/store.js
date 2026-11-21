@@ -18,6 +18,7 @@
  * marker (deletedAt), and owner/sync placeholders. UI code uses only the functions below.
  */
 
+import { buildBackup, validateBackup } from './practice-backup.js';
 import { buildClipAnalysis, ANALYSIS_VERSION } from './practice-data.js';
 import { servingArm } from './contact-analysis.js';
 import { COACHING_VERSION } from './coaching-insights.js';
@@ -343,6 +344,82 @@ export async function getJournalData() {
   });
   return result;
 }
+/** Capture a consistent archive of local practice data without reading video chunks. */
+export async function exportPracticeBackup() {
+  const data = { sessions: [], clips: [], poses: [], notes: [], analyses: [], drills: [] };
+  await tx(Object.keys(data), 'readonly', (t) => {
+    for (const [name, rows] of Object.entries(data)) {
+      t.objectStore(name).getAll().onsuccess = ({ target }) => target.result.forEach((row) => { if (!row.deletedAt) rows.push(row); });
+    }
+  });
+  const sessions = new Set(data.sessions.map((session) => session.id));
+  data.clips = data.clips.filter((clip) => sessions.has(clip.sessionId) && clip.status !== 'recording');
+  const clips = new Set(data.clips.map((clip) => clip.id));
+  data.notes = data.notes.filter((note) => note.sessionId == null || sessions.has(note.sessionId));
+  for (const name of ['poses', 'analyses', 'drills']) data[name] = data[name].filter((row) => clips.has(row.clipId));
+  return buildBackup(data);
+}
+
+/** Merge missing records in one transaction. Existing sessions, clips, notes and videos win. */
+export async function importPracticeBackup(backup) {
+  const data = validateBackup(backup);
+  const result = { sessions: 0, clips: 0, notes: 0 };
+  await tx(Object.keys(data), 'readwrite', (t) => {
+    const sessions = t.objectStore('sessions'), clips = t.objectStore('clips'), notes = t.objectStore('notes');
+    const group = (rows, key) => {
+      const groups = new Map();
+      for (const row of rows) {
+        if (!groups.has(row[key])) groups.set(row[key], []);
+        groups.get(row[key]).push(row);
+      }
+      return groups;
+    };
+    const clipsBySession = group(data.clips, 'sessionId');
+    const notesBySession = group(data.notes, 'sessionId');
+    const related = Object.fromEntries(['analyses', 'poses', 'drills'].map((name) => [name, group(data[name], 'clipId')]));
+    const addNote = (note) => {
+      notes.get(note.id).onsuccess = ({ target }) => {
+        if (!target.result) { notes.add(note); result.notes++; }
+      };
+    };
+    data.notes.filter((note) => note.sessionId == null).forEach(addNote);
+    for (const session of data.sessions) {
+      sessions.get(session.id).onsuccess = ({ target }) => {
+        const existing = target.result;
+        if (existing?.deletedAt || (existing && existing.createdAt !== session.createdAt)) return;
+        if (!existing) {
+          sessions.add(sessionRecord({ ...session, status: 'ended', endedAt: session.endedAt || backup.createdAt || session.createdAt,
+            clipCount: 0, recordingDurationMs: 0 }));
+          result.sessions++;
+        }
+        (notesBySession.get(session.id) || []).forEach(addNote);
+        for (const clip of (clipsBySession.get(session.id) || [])) {
+          clips.get(clip.id).onsuccess = ({ target: request }) => {
+            const local = request.result;
+            if (local && (local.deletedAt || local.sessionId !== session.id || local.createdAt !== clip.createdAt)) return;
+            if (!local) {
+              clips.add(clipRecord({ ...clip, restoredWithoutVideo: true,
+                video: { ...clip.video, chunks: 0, bytes: 0 } }, session));
+              result.clips++;
+              for (const name of ['analyses', 'poses']) {
+                for (const row of related[name].get(clip.id) || []) t.objectStore(name).add(row);
+              }
+              refreshSessionTotals(t, session.id);
+            }
+            for (const drill of related.drills.get(clip.id) || []) {
+              const drills = t.objectStore('drills');
+              drills.get(drill.id).onsuccess = (event) => {
+                if (!event.target.result) drills.add(drill);
+              };
+            }
+          };
+        }
+      };
+    }
+  });
+  return result;
+}
+
 function deleteClipDrills(t, clipIds) {
   t.objectStore('drills').openCursor().onsuccess = ({ target }) => {
     const cursor = target.result;
