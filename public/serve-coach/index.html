@@ -278,6 +278,15 @@ svg{display:block}
 .rec-go .btn{min-height:56px}
 .rec-timer .seg{min-width:168px}
 .rec-timer .seg button{min-height:48px;padding:0 10px}
+.home-go{display:grid;gap:10px}
+.home-go .btn svg{vertical-align:-4px;margin-right:6px}
+.up-box{display:grid;gap:10px;margin-top:12px;padding:16px;border-radius:16px;background:var(--card,rgba(255,255,255,.06));border:1px solid rgba(127,127,127,.25)}
+.up-box p{margin:0;font-weight:700}
+.up-box small{opacity:.75}
+.up-box .btn{min-height:48px;justify-self:start}
+.up-track{height:10px;border-radius:99px;background:rgba(127,127,127,.25);overflow:hidden}
+.up-fill{height:100%;width:0;background:var(--ball);transition:width .2s}
+#upMsg[data-kind=error]{color:var(--danger,#c0392b)}
 .rec-count{position:absolute;inset:0;z-index:3;display:grid;place-content:center;justify-items:center;gap:6px;background:rgba(11,20,38,.55);border-radius:inherit;color:#fff;cursor:pointer}
 .rec-count span{font-family:var(--display);font-weight:900;font-size:6rem;line-height:1;color:var(--ball);text-shadow:0 4px 18px rgba(0,0,0,.5);animation:recPop .9s ease-out both}
 .rec-count span.go{font-size:3.6rem}
@@ -448,7 +457,18 @@ svg{display:block}
 <!-- ================= HOME ================= -->
 <section class="screen" id="home" aria-labelledby="homeH" hidden>
   <div class="step-h"><span class="n">Serve Coach</span><h1 id="homeH" style="font-size:2.6rem">Ready to serve?</h1><p>Set up your phone, practise your serve, and see what your footage shows.</p></div>
-  <a class="btn btn-ball btn-block" href="#practice">Start a practice</a>
+  <div class="home-go">
+    <a class="btn btn-ball btn-block" href="#practice">Start a practice</a>
+    <button type="button" class="btn btn-quiet btn-block" id="upBtn"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 16V4m0 0-5 5m5-5 5 5M5 20h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg> Upload a video</button>
+  </div>
+  <input type="file" id="upInput" accept="video/*" hidden>
+  <div class="up-box" id="upBox" role="status" aria-live="polite" hidden>
+    <p id="upPct">Opening video…</p>
+    <div class="up-track"><div class="up-fill" id="upBar"></div></div>
+    <button type="button" class="btn btn-quiet" id="upCancel">Cancel</button>
+    <small>Processed on this phone. Nothing is uploaded to the internet.</small>
+  </div>
+  <p class="rec-msg" id="upMsg" aria-live="polite" hidden></p>
   <ol class="journey-list" aria-label="How a practice works">
     <li><b>1</b> Start</li><li><b>2</b> Practice: choose your sides</li><li><b>3</b> Camera setup: tripod and phone camera</li><li><b>4</b> Readiness: check the picture</li><li><b>5</b> Record your serves</li>
   </ol>

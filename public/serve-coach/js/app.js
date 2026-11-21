@@ -25,6 +25,7 @@ import { tripodName } from './labels.js';
 import { getPoseInfo } from './pose.js';
 import * as store from './store.js';
 import { initDebug } from './debug.js';
+import { initUpload } from './upload.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -284,6 +285,7 @@ window.addEventListener('pagehide', stopPreview);
 
 /* ---------- record, replay, library, practice ---------- */
 const replay = initReplay();
+initUpload({ openClip: (id) => replay.open(id) });
 const library = initLibrary({ openClip: (id) => replay.open(id) });
 const record = initRecord({ debug, openClip: (id) => replay.open(id, 'record') });
 const practice = initPractice({

@@ -300,7 +300,7 @@ export function initReplay({ onDeleted } = {}) {
     const session = await store.getSession(clip.sessionId);
     if (token !== openToken) return;
     selectedArm = resolveServingArm(clip, session, store.prefs.get(store.KEYS.profile));
-    $('rpTitle').textContent = `Clip ${clip.seq} · ${sideName(clip.side)} · Tripod ${tripodName(clip.tripodPosition)}`;
+    $('rpTitle').textContent = clip.source === 'upload' ? `Uploaded video${clip.fileName ? ' · ' + clip.fileName : ''}` : `Clip ${clip.seq} · ${sideName(clip.side)} · Tripod ${tripodName(clip.tripodPosition)}`;
     const [{ blob }, f] = await Promise.all([store.getClipVideo(clip), store.getClipPoses(clip.id)]);
     if (token !== openToken) return;
     frames = f;
