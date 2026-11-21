@@ -31,3 +31,4 @@ use the editor.
 
 - Serve Coach lives as a static app in public/serve-coach (plain JS modules, IndexedDB clips); / redirects to it. Why: imported as-is from moonstudio-dev/Serve-tracker (integration/serve-coach) without a rewrite.
 - Swing-speed extraction is a pure function over saved normalised MoveNet frames and recorded video dimensions; replay applies the clip's pose/video clock offset. Why: analysis must not alter capture, re-run the model, or depend on playback speed, and peak seeking must match the video clock.
+- Hitting-phase seeking uses a separate saved-pose sequence detector (bent preparation, overhead extension, follow-through), returning no target on unclear tracking; speed maxima remain separate. Why: wrist speed alone cannot identify hitting motion or exact ball contact.

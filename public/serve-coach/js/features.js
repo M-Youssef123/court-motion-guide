@@ -3,7 +3,7 @@
  * Input kp is flattened normalised x/y/score; restore video pixels before distances.
  * peakTimestamp is VIDEO milliseconds of peak smoothed speed, NOT acceleration
  * or detected contact. Pose clock = video clock + offsetMs (see replay.js).
- * Highest torso-relative wrist identifies an arm heuristically; a toss can win.
+ * Hitting-phase detection is separate from speed peaks; pose cannot detect ball contact.
  */
 const MIN_CONFIDENCE = 0.35;
 const TORSO_METERS = 0.50;
@@ -33,7 +33,55 @@ function body(frame, width, height) {
   if (!ls || !rs || !lh || !rh) return null;
   const shoulder = { x: (ls.x + rs.x) / 2, y: (ls.y + rs.y) / 2 };
   const torso = Math.hypot(shoulder.x - (lh.x + rh.x) / 2, shoulder.y - (lh.y + rh.y) / 2);
-  return torso > 0 ? { shoulder, torso } : null;
+  return torso > 0 ? { shoulder, torso, ls, rs } : null;
+}
+
+/** Estimate the overhead hitting extension, never a generic speed maximum.
+ * Requires continuous bent-arm preparation -> rising extension -> follow-through.
+ * A straight toss arm does not meet the preparation requirement. No ball/racket tracking.
+ */
+export function findHittingMoment(frames, { width, height, offsetMs = 0 }) {
+  if (!Array.isArray(frames) || !(width > 0) || !(height > 0) || !Number.isFinite(width) || !Number.isFinite(height) || !Number.isFinite(offsetMs)) return null;
+  const candidates = [];
+  for (const [arm, indices] of Object.entries(ARMS)) {
+    let segment = [];
+    function inspect() {
+      for (let i = 1; i < segment.length - 1; i++) {
+        const hit = segment[i];
+        if (hit.angle < 150 || hit.elevation < 0.5) continue;
+        const before = segment.slice(0, i).filter(p => hit.t - p.t <= 1000);
+        const after = segment.slice(i + 1).filter(p => p.t - hit.t <= 700);
+        const prepared = before.some(p => p.angle <= 120 && hit.elevation - p.elevation >= 0.3);
+        const followed = after.some(p => hit.elevation - p.elevation >= 0.3);
+        // Use the reach apex of the hitting extension, not an earlier rising frame.
+        const higherReach = [...before, ...after].some(p => p.angle >= 150 && p.elevation > hit.elevation + 0.02);
+        if (prepared && followed && !higherReach) candidates.push({ t: hit.t, arm, score: hit.elevation + hit.angle / 180 });
+      }
+      segment = [];
+    }
+    for (const frame of frames) {
+      const b = body(frame, width, height);
+      const wrist = b && point(frame.kp, indices.wrist, width, height);
+      const elbow = b && point(frame.kp, indices.elbow, width, height);
+      if (!b || !wrist || !elbow) { inspect(); continue; }
+      const shoulder = arm === 'left' ? b.ls : b.rs;
+      const ux = shoulder.x - elbow.x, uy = shoulder.y - elbow.y;
+      const vx = wrist.x - elbow.x, vy = wrist.y - elbow.y;
+      const length = Math.hypot(ux, uy) * Math.hypot(vx, vy);
+      if (!length) { inspect(); continue; }
+      const previous = segment[segment.length - 1];
+      if (previous && (frame.t <= previous.t || frame.t - previous.t > MAX_GAP_MS)) inspect();
+      segment.push({ t: frame.t, elevation: (shoulder.y - wrist.y) / b.torso,
+        angle: Math.acos(Math.max(-1, Math.min(1, (ux * vx + uy * vy) / length))) * 180 / Math.PI });
+    }
+    inspect();
+  }
+  candidates.sort((a, b) => b.score - a.score || a.t - b.t);
+  const best = candidates[0];
+  // Equally plausible strokes on opposite arms are not a reliable hitting target.
+  if (!best || candidates.some(p => p.arm !== best.arm && Math.abs(p.score - best.score) < 0.1)) return null;
+  const timestamp = best.t - offsetMs;
+  return timestamp >= 0 ? { timestamp, arm: best.arm } : null;
 }
 
 /** Returns null rather than a fabricated zero when tracking cannot support an estimate.
@@ -55,7 +103,8 @@ export function analyzeSwingSpeed(frames, { width, height, offsetMs = 0 }) {
   }
   // At least one tracked wrist must rise above its shoulders; exact ties are ambiguous.
   if (Math.max(elevation.left, elevation.right) <= 0 || elevation.left === elevation.right) return null;
-  const dominantArm = elevation.left > elevation.right ? 'left' : 'right';
+  const hittingMoment = findHittingMoment(frames, { width, height, offsetMs });
+  const dominantArm = hittingMoment?.arm || (elevation.left > elevation.right ? 'left' : 'right');
   const indices = ARMS[dominantArm];
   let previous = null, window = [], peak = null;
   for (const frame of frames) {

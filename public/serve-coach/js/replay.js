@@ -20,7 +20,7 @@ import { SkeletonOverlay } from './overlay.js';
 import { estimateFrame } from './pose.js';
 import { tripodName, orientationName } from './labels.js';
 import { saveVideo, clipFilename } from './save-video.js';
-import { analyzeSwingSpeed } from './features.js';
+import { analyzeSwingSpeed, findHittingMoment } from './features.js';
 
 const $ = (id) => document.getElementById(id);
 const fmtTime = (s) => { s = Math.max(0, Math.floor(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
@@ -66,13 +66,16 @@ export function initReplay({ onDeleted } = {}) {
   speedSection.innerHTML = `<h2 class="sec-h" id="rpSpeedHeading">Swing speed · estimate</h2>
     <p class="rec-label" id="rpSpeedStatus" aria-live="polite"></p>
     <dl class="rp-info" id="rpSpeedValues"></dl>
-    <button class="btn btn-quiet" type="button" id="rpSpeedPeak" disabled>▶ Peak moment</button>
-    <p class="rec-label">Experimental 2D estimate: assumes a 0.50 m adult torso and 1.75× wrist-to-racket multiplier. Not measured racket or ball speed. Camera angle, body proportions and tracking affect accuracy; contact is not detected. The highest-reaching wrist may be the toss arm. Pace bands are not a skill assessment; don’t compare different camera positions.</p>`;
+    <button class="btn btn-quiet" type="button" id="rpSpeedPeak" disabled>▶ Hitting moment · estimate</button>
+    <p class="rec-label" id="rpHitStatus" aria-live="polite"></p>
+    <p class="rec-label">Experimental 2D estimate: assumes a 0.50 m adult torso and 1.75× wrist-to-racket multiplier. Not measured racket or ball speed. The hitting moment estimates overhead arm extension between preparation and follow-through, not exact ball contact. Camera angle, body proportions and tracking affect accuracy. Pace bands are not a skill assessment; don’t compare different camera positions.</p>`;
   $('rpInfo').before(speedSection);
-  let speedSummary = null;
+  let speedSummary = null, hittingMoment = null;
   function paintSpeed() {
     const v = clip && clip.video;
     speedSummary = v ? analyzeSwingSpeed(frames, { width: v.width, height: v.height, offsetMs }) : null;
+    hittingMoment = v ? findHittingMoment(frames, { width: v.width, height: v.height, offsetMs }) : null;
+    $('rpHitStatus').textContent = hittingMoment ? '' : 'Hitting moment unavailable: no clear preparation, overhead extension and follow-through.';
     const dl = $('rpSpeedValues');
     dl.replaceChildren();
     $('rpSpeedStatus').textContent = speedSummary
@@ -84,20 +87,21 @@ export function initReplay({ onDeleted } = {}) {
         ['Peak hand', `${s.peakHandSpeedMph.toFixed(1)} mph · ${s.peakHandSpeedKmh.toFixed(1)} km/h`],
         ['Estimated racket', `${s.estRacketSpeedMph.toFixed(1)} mph · ${s.estRacketSpeedKmh.toFixed(1)} km/h`],
         ['Estimated pace', s.speedRating],
-        ['Peak moment', `${(s.peakTimestamp / 1000).toFixed(3)} s`],
+        ['Speed peak', `${(s.peakTimestamp / 1000).toFixed(3)} s`],
+        ...(hittingMoment ? [['Hitting moment · estimate', `${(hittingMoment.timestamp / 1000).toFixed(3)} s`]] : []),
       ];
       rows.forEach(([label, value]) => {
         const dt = document.createElement('dt'), dd = document.createElement('dd');
         dt.textContent = label; dd.textContent = value; dl.append(dt, dd);
       });
     }
-    $('rpSpeedPeak').hidden = !speedSummary;
-    $('rpSpeedPeak').disabled = !speedSummary || $('rpPlay').disabled;
+    $('rpSpeedPeak').hidden = !hittingMoment;
+    $('rpSpeedPeak').disabled = !hittingMoment || $('rpPlay').disabled;
   }
   $('rpSpeedPeak').addEventListener('click', () => {
-    if (!speedSummary || calibrating) return;
+    if (!hittingMoment || calibrating) return;
     video.pause();
-    video.currentTime = Math.min(duration(), speedSummary.peakTimestamp / 1000);
+    video.currentTime = Math.min(duration(), hittingMoment.timestamp / 1000);
     redraw();
   });
 
@@ -241,7 +245,7 @@ export function initReplay({ onDeleted } = {}) {
   /* ---------- open / close ---------- */
   function setControls(on) {
     ['rpPlay', 'rpSeek', 'rpSkel', 'rpMirror', 'rpDelete'].forEach((id) => { $(id).disabled = !on; });
-    $('rpSpeedPeak').disabled = !on || !speedSummary;
+    $('rpSpeedPeak').disabled = !on || !hittingMoment;
     document.querySelectorAll('[data-rprate],[data-rpstep]').forEach((b) => { b.disabled = !on; });
   }
 
@@ -274,6 +278,8 @@ export function initReplay({ onDeleted } = {}) {
     url = null; overlay.clear();
     clipBlob = null; setSave('idle');
     speedSummary = null;
+    hittingMoment = null;
+    $('rpHitStatus').textContent = '';
     $('rpSpeedValues').replaceChildren();
     $('rpSpeedStatus').textContent = '';
     $('rpSpeedPeak').disabled = true;
