@@ -27,6 +27,7 @@ import * as store from './store.js';
 import { initDebug } from './debug.js';
 import { initUpload } from './upload.js';
 import { initNotes } from './notes.js';
+import { initJournalExport } from './journal-export.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -289,6 +290,7 @@ const replay = initReplay();
 initUpload({ openClip: (id) => replay.open(id) });
 const library = initLibrary({ openClip: (id) => replay.open(id) });
 const notes = initNotes();
+initJournalExport();
 const record = initRecord({ debug, openClip: (id) => replay.open(id, 'record') });
 const practice = initPractice({
   getHand: () => profile().hand || null,

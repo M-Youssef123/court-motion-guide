@@ -305,6 +305,27 @@ export async function getPracticeData(sessionId) {
   }));
   return { ...session, recordings, notes: await listNotes(sessionId) };
 }
+/** Consistent metadata-only journal snapshot. Never opens video/chunk or raw pose stores. */
+export async function getJournalData() {
+  const result = { sessions: [], clips: [], notes: [], analyses: [] };
+  await tx(['sessions', 'clips', 'notes', 'analyses'], 'readonly', (t) => {
+    for (const name of Object.keys(result)) {
+      t.objectStore(name).openCursor().onsuccess = (event) => {
+        const cursor = event.target.result;
+        if (!cursor) return;
+        const record = cursor.value;
+        if (!record.deletedAt) {
+          if (name === 'analyses') {
+            const { clipId, sessionId, metrics, generatedAt, handSource, dominantHand } = record;
+            result.analyses.push({ clipId, sessionId, metrics, generatedAt, handSource, dominantHand });
+          } else result[name].push(record);
+        }
+        cursor.continue();
+      };
+    }
+  });
+  return result;
+}
 /** Permanently delete a clip with its video and movement data (manual deletion, MVP1). */
 export async function deleteClip(clip) {
   await tx(['clips', 'chunks', 'poses', 'sessions', 'analyses'], 'readwrite', (t) => {

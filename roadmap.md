@@ -22,3 +22,7 @@
 - [x] Store session identity, date, recorded hand, duration and stroke type with safe legacy upgrades.
 - [x] Persist timestamped tracking confidence, joint angles and available swing estimates linked to original clips.
 - [x] Finalize live, uploaded and recovered recordings; test reload persistence and replay compatibility.
+
+# Practice journal export
+- [x] Export all saved sessions, notes and available analysis feedback as plain readable Markdown, without videos.
+- [x] Add a mobile-safe export/download control in Progress and verify saved file contents.
