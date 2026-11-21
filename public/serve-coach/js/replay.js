@@ -16,11 +16,13 @@
  */
 
 import * as store from './store.js';
-import { SkeletonOverlay } from './overlay.js';
+import { SkeletonOverlay, toScreen } from './overlay.js';
 import { estimateFrame } from './pose.js';
 import { tripodName, orientationName } from './labels.js';
 import { saveVideo, clipFilename } from './save-video.js';
-import { analyzeServeContact, resolveServingArm } from './contact-analysis.js';
+import { resolveServingArm } from './contact-analysis.js';
+
+import { buildClipAnalysis } from './practice-data.js';
 
 const $ = (id) => document.getElementById(id);
 const fmtTime = (s) => { s = Math.max(0, Math.floor(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
@@ -59,59 +61,57 @@ export function initReplay({ onDeleted } = {}) {
   let skeletonOn = true, mirrorOn = false, calibrating = false, syncId = 0, openToken = 0;
   let wantedId = null, selectedArm = null, wantedPoseMs = null;
 
-  /* ---------- experimental swing-speed summary (saved frames only) ---------- */
-  const speedSection = document.createElement('section');
-  speedSection.className = 'block';
-  speedSection.setAttribute('aria-labelledby', 'rpSpeedHeading');
-  speedSection.innerHTML = `<h2 class="sec-h" id="rpSpeedHeading">Swing speed · estimate</h2>
-    <p class="rec-label" id="rpSpeedStatus" aria-live="polite"></p>
-    <dl class="rp-info" id="rpSpeedValues"></dl>
-    <button class="btn btn-quiet" type="button" id="rpSpeedPeak" disabled>▶ Jump to Contact</button>
-    <p class="rec-label" id="rpHitStatus" aria-live="polite"></p>
-    <p class="rec-label" id="rpExtensionInsight"></p>
-    <p class="rec-label">Contact and extension are estimated from your selected serving arm, not detected ball impact. Speeds use a 0.50 m torso reference and 1.75× wrist-to-racket multiplier; they are not measured racket or ball speed. Camera angle, proportions and tracking affect accuracy.</p>`;
-  $('rpInfo').before(speedSection);
-  let speedSummary = null;
+  const movement = document.createElement('section');
+  movement.className = 'block';
+  movement.innerHTML = `<h2 class="sec-h">Movement in replay</h2>
+    <div class="rp-toggles">
+      <button class="rp-tog" id="rpAngles" type="button" aria-pressed="false" disabled>2D angles</button>
+      <button class="rp-tog" id="rpTrajectory" type="button" aria-pressed="false" disabled>Wrist trail</button>
+    </div>
+    <p class="rec-label" id="rpMeasurements"></p>
+    <p class="rec-label" id="rpWrist"></p>
+    <button class="btn btn-quiet" id="rpSpeedPeak" type="button" disabled>Jump to peak wrist movement</button>
+    <button class="btn btn-quiet" id="rpContact" type="button" disabled>Jump to estimated overhead reach</button>
+    <p class="rec-label">Angles and wrist speeds describe the camera image. Framing and perspective affect them. Wrist speed is shown in percent of image diagonal per second.</p>`;
+  $('rpInfo').before(movement);
+  let analysis = null, anglesOn = false, trajectoryOn = false;
+  const measurement = $('rpMeasurements');
+  $('rpBox').append(measurement);
+  measurement.classList.add('rp-measurements');
+
   function paintSpeed() {
-    const v = clip && clip.video;
-    speedSummary = v ? analyzeServeContact(frames, { width: v.width, height: v.height, arm: selectedArm, offsetMs }) : null;
-    $('rpHitStatus').textContent = speedSummary
-      ? `Estimated contact · ${(speedSummary.contactTimestamp / 1000).toFixed(3)} s${speedSummary.handSpeedMph === null ? ' · Speed unavailable: not enough clear tracking near contact.' : ''}`
-      : selectedArm ? 'Contact estimate unavailable: no clear bent-arm wind-up followed by peak reach above the head.' : 'Select your serving hand on Home to analyze this clip.';
-    $('rpExtensionInsight').textContent = speedSummary?.insight || '';
-    const dl = $('rpSpeedValues');
-    dl.replaceChildren();
-    $('rpSpeedStatus').textContent = selectedArm
-      ? `${selectedArm === 'left' ? 'Left' : 'Right'} serving arm · Tripod ${tripodName(clip.tripodPosition)}${clip.servingArm ? '' : ' · Using current serving-hand preference'}` : '';
-    if (speedSummary) {
-      const s = speedSummary;
-      const rows = [
-        ['Estimated racket speed', s.estRacketSpeedMph === null ? 'Unavailable' : `${s.estRacketSpeedMph.toFixed(1)} MPH · ${s.estRacketSpeedKmh.toFixed(1)} KM/H`],
-        ['Hand whip speed', s.handSpeedMph === null ? 'Unavailable' : `${s.handSpeedMph.toFixed(1)} MPH · ${s.handSpeedKmh.toFixed(1)} KM/H`],
-        ['Extension at contact · estimate', `${s.elbowAngle.toFixed(1)}°`],
-      ];
-      rows.forEach(([label, value]) => {
-        const dt = document.createElement('dt'), dd = document.createElement('dd');
-        dt.textContent = label; dd.textContent = value; dl.append(dt, dd);
-      });
-    }
-    $('rpSpeedPeak').hidden = !speedSummary;
-    $('rpSpeedPeak').disabled = !speedSummary || $('rpPlay').disabled;
+    analysis = buildClipAnalysis(clip, frames, { arm: selectedArm, offsetMs });
+    const wrist = analysis.metrics.wrist;
+    $('rpWrist').textContent = wrist
+      ? `Tracked wrist speed · Peak ${wrist.peak.speed.toFixed(1)}%/s · Average ${wrist.average.toFixed(1)}%/s over ${wrist.trackedSeconds.toFixed(1)} tracked seconds.`
+      : 'Wrist speed unavailable. A serving hand and continuous wrist tracking are needed.';
   }
-  $('rpSpeedPeak').addEventListener('click', () => {
-    if (!speedSummary || calibrating) return;
+  function jumpTo(poseMs) {
+    if (calibrating || !Number.isFinite(poseMs)) return;
     video.pause();
-    video.currentTime = Math.min(duration(), speedSummary.contactTimestamp / 1000);
+    video.currentTime = Math.max(0, Math.min(duration(), (poseMs - offsetMs) / 1000));
+    redraw();
+  }
+  $('rpSpeedPeak').addEventListener('click', () => jumpTo(analysis?.metrics.wrist?.peak.t));
+  $('rpContact').addEventListener('click', () => jumpTo(analysis?.metrics.contact?.poseTimestampMs));
+  $('rpAngles').addEventListener('click', () => {
+    anglesOn = !anglesOn;
+    $('rpAngles').setAttribute('aria-pressed', String(anglesOn));
+    redraw();
+  });
+  $('rpTrajectory').addEventListener('click', () => {
+    trajectoryOn = !trajectoryOn;
+    $('rpTrajectory').setAttribute('aria-pressed', String(trajectoryOn));
     redraw();
   });
 
   /* ---------- pose lookup and drawing ---------- */
-  function poseAt(tMs, maxGap = 250) {
-    if (!frames.length) return null;
-    let lo = 0, hi = frames.length - 1;
-    while (lo < hi) { const mid = (lo + hi) >> 1; if (frames[mid].t < tMs) lo = mid + 1; else hi = mid; }
-    let best = frames[lo];
-    if (lo > 0 && Math.abs(frames[lo - 1].t - tMs) < Math.abs(best.t - tMs)) best = frames[lo - 1];
+  function poseAt(tMs, maxGap = 250, source = frames) {
+    if (!source.length) return null;
+    let lo = 0, hi = source.length - 1;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (source[mid].t < tMs) lo = mid + 1; else hi = mid; }
+    let best = source[lo];
+    if (lo > 0 && Math.abs(source[lo - 1].t - tMs) < Math.abs(best.t - tMs)) best = source[lo - 1];
     return Math.abs(best.t - tMs) <= maxGap ? best : null;
   }
   function toVideoPx(kp) {
@@ -120,9 +120,42 @@ export function initReplay({ onDeleted } = {}) {
     return out;
   }
   function drawAt(tMs) {
-    if (!skeletonOn || calibrating || !video.videoWidth) { overlay.clear(); return; }
-    const f = poseAt(tMs + offsetMs);
-    overlay.draw(f && f.kp ? toVideoPx(f.kp) : null);
+    if (calibrating || !video.videoWidth) { overlay.clear(); return; }
+    const poseMs = tMs + offsetMs;
+    const f = poseAt(poseMs);
+    overlay.draw(skeletonOn && f?.kp ? toVideoPx(f.kp) : null);
+    const m = anglesOn && poseAt(poseMs, 110, analysis?.frames || []);
+    const values = [m?.jointAngles?.leftKnee, m?.jointAngles?.rightKnee,
+      m?.jointAngles?.leftElbow, m?.jointAngles?.rightElbow, m?.shoulderTilt, m?.bodyLean];
+    const labels = ['L knee', 'R knee', 'L elbow', 'R elbow', 'Shoulder tilt', 'Body lean'];
+    measurement.hidden = !anglesOn;
+    const reading = values.flatMap((v, i) => Number.isFinite(v) ? [`${labels[i]} ${v.toFixed(0)}°`] : []).join(' · ');
+    const display = reading || '2D angles unavailable here';
+    if (anglesOn && measurement.textContent !== display) measurement.textContent = display;
+    const wrist = analysis?.metrics.wrist;
+    if (!trajectoryOn || !wrist || !overlay.mapping) return;
+    const { ctx, mapping, dpr } = overlay;
+    const screen = (p) => toScreen(mapping, { x: p.x * video.videoWidth, y: p.y * video.videoHeight });
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#D8F23A';
+    ctx.beginPath();
+    let previous = null;
+    for (const sample of wrist.trajectory) {
+      if (sample.t < poseMs - 800) continue;
+      if (sample.t > poseMs + 20) break;
+      const p = screen(sample);
+      if (sample.connected && previous) ctx.lineTo(p.x, p.y);
+      else ctx.moveTo(p.x, p.y);
+      previous = p;
+    }
+    ctx.stroke();
+    if (Math.abs(poseMs - wrist.peak.t) <= 100) {
+      const peak = screen(wrist.peak);
+      ctx.beginPath();
+      ctx.arc(peak.x, peak.y, 7, 0, Math.PI * 2);
+      ctx.stroke();
+    }
   }
   function startSync() {
     const id = ++syncId;
@@ -245,7 +278,10 @@ export function initReplay({ onDeleted } = {}) {
   /* ---------- open / close ---------- */
   function setControls(on) {
     ['rpPlay', 'rpSeek', 'rpSkel', 'rpMirror', 'rpDelete'].forEach((id) => { $(id).disabled = !on; });
-    $('rpSpeedPeak').disabled = !on || !speedSummary;
+    $('rpSpeedPeak').disabled = !on || !analysis?.metrics.wrist;
+    $('rpContact').disabled = !on || !analysis?.metrics.contact;
+    $('rpAngles').disabled = !on;
+    $('rpTrajectory').disabled = !on || !analysis?.metrics.wrist;
     document.querySelectorAll('[data-rprate],[data-rpstep]').forEach((b) => { b.disabled = !on; });
   }
 
@@ -277,14 +313,10 @@ export function initReplay({ onDeleted } = {}) {
     if (url) URL.revokeObjectURL(url);
     url = null; overlay.clear();
     clipBlob = null; setSave('idle');
-    speedSummary = null;
+    analysis = null;
     selectedArm = null;
-    $('rpExtensionInsight').textContent = '';
-    $('rpHitStatus').textContent = '';
-    $('rpSpeedValues').replaceChildren();
-    $('rpSpeedStatus').textContent = '';
-    $('rpSpeedPeak').disabled = true;
-    $('rpSpeedPeak').hidden = true;
+    measurement.hidden = true;
+    $('rpWrist').textContent = '';
   }
 
   async function enter() {
@@ -306,7 +338,6 @@ export function initReplay({ onDeleted } = {}) {
     frames = f;
     offsetMs = clip.sync && clip.sync.offsetMs != null ? clip.sync.offsetMs : defaultOffsetMs();
     info(clip);
-    paintSpeed();
     if (!blob.size) { $('rpStatus').textContent = 'No video was saved for this clip (it was interrupted before any video was written).'; $('rpDelete').disabled = false; return; }
     clipBlob = blob; setSave('ready');
     url = URL.createObjectURL(blob);

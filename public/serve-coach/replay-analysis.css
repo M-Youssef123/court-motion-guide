@@ -10,3 +10,14 @@
   .rp-screen .rp-bar { grid-template-columns: auto minmax(0, 1fr); }
   .rp-screen .rp-time { grid-column: 1 / -1; text-align: right; }
 }
+.rp-measurements {
+  position: absolute;
+  top: 0.5rem;
+  inset-inline: 0.5rem;
+  margin: 0;
+  padding: 0.45rem 0.6rem;
+  background: #0b1426;
+  color: #d8f23a;
+  border-radius: 0.5rem;
+  pointer-events: none;
+}
