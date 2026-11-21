@@ -82,6 +82,9 @@ export function initReplay({ onDeleted } = {}) {
   function paintSpeed() {
     analysis = buildClipAnalysis(clip, frames, { arm: selectedArm, offsetMs });
     const wrist = analysis.metrics.wrist;
+    const angle = analysis.metrics.contact?.elbowAngleDegrees;
+    $('rpContact').textContent = Number.isFinite(angle)
+      ? `Jump to estimated overhead reach · ${angle.toFixed(0)}° elbow angle` : 'Jump to estimated overhead reach';
     $('rpWrist').textContent = wrist
       ? `Tracked wrist speed · Peak ${wrist.peak.speed.toFixed(1)}%/s · Average ${wrist.average.toFixed(1)}%/s over ${wrist.trackedSeconds.toFixed(1)} tracked seconds.`
       : 'Wrist speed unavailable. A serving hand and continuous wrist tracking are needed.';

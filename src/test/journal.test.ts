@@ -9,7 +9,7 @@ const data = () => ({
   sessions: [{ id: 'session-1', date: '2026-11-21T12:00:00Z', dominantHand: 'right', status: 'ended' }],
   clips: [{ id: 'clip-1', sessionId: 'session-1', seq: 1, dominantHand: 'right', status: 'saved', video: { durationMs: 65000, secretVideoBytes: 'BINARY_VIDEO' }, poseFrames: [{ kp: 'RAW_LANDMARKS' }] }],
   notes: [{ id: 'note-1', sessionId: 'session-1', createdAt: '2026-11-21T12:05:00Z', text: 'Keep my toss steady\nFinish balanced.' }, { id: 'general', sessionId: null, createdAt: '2026-11-20T12:00:00Z', text: 'Warm up first.' }],
-  analyses: [{ clipId: 'clip-1', metrics: { contact: { timestampMs: 1250, elbowAngleDegrees: 170 }, swingSpeed: { handMph: 30, handKmh: 48.3, racketMph: 52.5, racketKmh: 84.5 } } }],
+  analyses: [{ clipId: 'clip-1', metrics: { contact: { timestampMs: 1250, elbowAngleDegrees: 170 }, wrist: { peak: { speed: 52.5 }, average: 30 } } }],
 });
 
 describe('practice journal data rules', () => {
@@ -33,12 +33,11 @@ describe('practice journal data rules', () => {
     clip.video.durationMs = 59900;
     expect(buildJournal(fixture)).toContain('Recording duration: 1m 0s');
   });
-  it('exports available saved contact speeds and matching extension coaching', () => {
+  it('exports tracked wrist speeds and estimated overhead extension', () => {
     const text = buildJournal(data());
-    expect(text).toContain('30.0 mph / 48.3 km/h');
-    expect(text).toContain('52.5 mph / 84.5 km/h');
+    expect(text).toContain('30.0% of image diagonal per second');
+    expect(text).toContain('52.5% of image diagonal per second');
     expect(text).toContain('170.0 degrees');
-    expect(text).toContain('Clean full arm extension at contact!');
     expect(text).toContain('1.250s into video');
   });
   it('does not include video bytes, raw landmarks or pretend example coaching is personal', () => {
@@ -50,8 +49,8 @@ describe('practice journal data rules', () => {
   it('keeps missing estimates unavailable instead of inventing zero or advice', () => {
     const fixture = data(); fixture.analyses = [];
     const text = buildJournal(fixture);
-    expect(text).toContain('Hand speed near contact: Unavailable');
-    expect(text).toContain('Contact extension: Unavailable');
+    expect(text).toContain('Average tracked wrist speed: Unavailable');
+    expect(text).toContain('2D elbow angle at overhead reach: Unavailable');
     expect(text).not.toContain('Clean full arm extension');
   });
   it('excludes deleted sessions and their recordings from the journal summary', () => {

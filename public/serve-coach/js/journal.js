@@ -1,6 +1,5 @@
 /* Human-readable summary only: not a restorable backup; no media or per-frame arrays. */
-import { extensionInsight, servingArm } from './contact-analysis.js';
-import { speedRating } from './features.js';
+import { servingArm } from './contact-analysis.js';
 
 const divider = '----------------------------------------';
 const finite = (value) => Number.isFinite(value) && value >= 0;
@@ -14,7 +13,6 @@ const duration = (ms) => {
   const seconds = Math.round(ms / 1000);
   return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 };
-const speed = (mph, kmh) => finite(mph) ? `${mph.toFixed(1)} mph${finite(kmh) ? ` / ${kmh.toFixed(1)} km/h` : ''} (estimate)` : 'Unavailable';
 
 export function journalFilename(date = new Date()) {
   const pad = (n) => String(n).padStart(2, '0');
@@ -27,17 +25,14 @@ export function buildJournal(data, exportedAt = new Date()) {
   const clips = data.clips.filter(c => !c.deletedAt && ids.has(c.sessionId));
   const analyses = new Map(data.analyses.map(a => [a.clipId, a]));
   const notes = data.notes.filter(n => !n.deletedAt);
-  const racketSpeeds = clips.map(c => analyses.get(c.id)?.metrics?.swingSpeed?.racketMph).filter(finite);
   const hands = [...new Set(sessions.map(s => hand(s.dominantHand || s.playerHand || s.hand)))];
   const lines = ['Serve Coach Practice Journal', `Exported: ${dateText(exportedAt)}`, '', divider, 'Lifetime Summary',
     `Practice sessions: ${sessions.length}`, `Video recordings: ${clips.length}`,
     `Serve recordings: ${clips.filter(c => (c.strokeType || 'serve') === 'serve').length} (clips, not individual serves)`,
-    `Personal notes: ${notes.length}`, `Best estimated racket speed: ${racketSpeeds.length ? `${racketSpeeds.reduce((best, value) => Math.max(best, value), 0).toFixed(1)} mph` : 'Unavailable'}`,
+    `Personal notes: ${notes.length}`,
     `Recorded dominant hand: ${hands.join(', ') || 'Unknown'}`, '',
-    'Speeds, contact timing and extension are pose-based estimates, not measured ball impact or ball speed.',
-    'Hand speed is contact-local, not a global peak. Pace bands are experimental.',
-    'Videos and per-frame landmark arrays are excluded. This journal is not a restorable backup.',
-    'Example coaching on the Progress screen is not personal feedback and is excluded.', ''];
+    'Wrist speed and joint angles are measured in the 2D camera image. Framing and perspective affect them.',
+    'Videos and per-frame landmark arrays are excluded. Use the separate practice backup for restoration.', ''];
   function appendNotes(items) {
     if (!items.length) { lines.push('  No notes saved.'); return; }
     for (const note of items.sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))) {
@@ -58,18 +53,17 @@ export function buildJournal(data, exportedAt = new Date()) {
     lines.push('', 'Recording Analysis');
     if (!recordings.length) lines.push('  No recordings saved.');
     for (const clip of recordings) {
-      const analysis = analyses.get(clip.id), contact = analysis?.metrics?.contact, swing = analysis?.metrics?.swingSpeed;
+      const analysis = analyses.get(clip.id), contact = analysis?.metrics?.contact, wrist = analysis?.metrics?.wrist;
       const angle = contact?.elbowAngleDegrees;
       lines.push('', `  ${clip.strokeType || 'Serve'} recording ${clip.seq}`, `  Clip ID: ${clip.id}`, `  Date: ${dateText(clip.createdAt)}`,
         `  Source: ${clip.source === 'upload' ? 'Uploaded footage' : 'Camera recording'}`, `  Status: ${clip.status || 'Unknown'}`,
         `  Duration: ${duration(clip.video?.durationMs)}${clip.video?.durationSource === 'recovered-estimate' ? ' (recovered estimate)' : ''}`,
         `  Serving hand: ${hand(clip.dominantHand || clip.servingArm)}`,
-        `  Hand speed near contact: ${speed(swing?.handMph, swing?.handKmh)}`,
-        `  Estimated racket speed: ${speed(swing?.racketMph, swing?.racketKmh)}`,
-        `  Pace band: ${finite(swing?.racketMph) ? speedRating(swing.racketMph) : 'Unavailable'}`,
-        `  Estimated contact: ${finite(contact?.timestampMs) ? `${(contact.timestampMs / 1000).toFixed(3)}s into video` : 'Unavailable'}`,
-        `  Contact extension: ${finite(angle) ? `${angle.toFixed(1)} degrees (estimate)` : 'Unavailable'}`,
-        `  Coaching advice: ${extensionInsight(angle) || 'Unavailable: no clear contact estimate saved.'}`);
+        `  Video file: ${clip.restoredWithoutVideo ? 'Excluded from restored backup' : clip.video?.bytes ? 'Stored separately' : 'Unavailable'}`,
+        `  Peak tracked wrist speed: ${finite(wrist?.peak?.speed) ? `${wrist.peak.speed.toFixed(1)}% of image diagonal per second` : 'Unavailable'}`,
+        `  Average tracked wrist speed: ${finite(wrist?.average) ? `${wrist.average.toFixed(1)}% of image diagonal per second` : 'Unavailable'}`,
+        `  Estimated overhead reach: ${finite(contact?.timestampMs) ? `${(contact.timestampMs / 1000).toFixed(3)}s into video` : 'Unavailable'}`,
+        `  2D elbow angle at overhead reach: ${finite(angle) ? `${angle.toFixed(1)} degrees (estimate)` : 'Unavailable'}`);
       if (analysis?.handSource === 'replay-preference-fallback') lines.push(`  Analysis hand: ${hand(analysis.dominantHand)} (replay preference fallback, not captured hand)`);
       if (analysis?.coaching) {
         lines.push('  Recording-based coaching:');

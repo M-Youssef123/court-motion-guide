@@ -335,7 +335,9 @@ export async function getJournalData() {
         if (!record.deletedAt) {
           if (name === 'analyses') {
             const { clipId, sessionId, metrics, generatedAt, handSource, dominantHand, coaching } = record;
-            result.analyses.push({ clipId, sessionId, metrics, generatedAt, handSource, dominantHand, coaching });
+            const wrist = metrics?.wrist;
+            const summary = wrist ? { ...metrics, wrist: { peak: wrist.peak, average: wrist.average, trackedSeconds: wrist.trackedSeconds } } : metrics;
+            result.analyses.push({ clipId, sessionId, metrics: summary, generatedAt, handSource, dominantHand, coaching });
           } else result[name].push(record);
         }
         cursor.continue();

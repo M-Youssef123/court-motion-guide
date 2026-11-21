@@ -129,7 +129,12 @@ export function initPhaseComparison(host) {
     catch{if(generation===loadToken)$('phaseStatus').textContent='The automatic frame could not be restored. Try again.';}
   });
   async function load(recording) {
-    clear();clip=recording;reference();const generation=loadToken;$('phaseStatus').textContent='Opening your recording frames…';
+    clear();clip=recording;reference();
+    if (recording.restoredWithoutVideo) {
+      $('phaseStatus').textContent = 'Frame comparison needs the original video. This clip was restored from a practice data backup.';
+      return;
+    }
+    const generation=loadToken;$('phaseStatus').textContent='Opening your recording frames…';
     try {
       const [saved,{blob}]=await Promise.all([store.getClipPoses(clip.id),store.getClipVideo(clip)]);
       if(generation!==loadToken)return;if(!blob.size)throw new Error('empty');
