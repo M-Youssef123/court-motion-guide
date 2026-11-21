@@ -149,10 +149,18 @@ export function initRecord({ debug, openClip }) {
     timerSec = +b.dataset.rectimer; localStorage.setItem('sc-rec-timer', String(timerSec)); paintTimer();
   }));
   let counting = null, audioCtx = null;
-  function beep(freq, ms) {
+  // Create and resume the AudioContext synchronously inside the tap that starts the
+  // countdown, so iOS unlocks audio while the user gesture is still active.
+  function unlockAudio() {
     try {
       audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
       if (audioCtx.state === 'suspended') audioCtx.resume();
+    } catch (e) { /* no audio: the countdown still shows */ }
+  }
+  function beep(freq, ms) {
+    try {
+      unlockAudio();
+      if (!audioCtx) return;
       const t = audioCtx.currentTime, o = audioCtx.createOscillator(), g = audioCtx.createGain();
       o.type = 'sine'; o.frequency.value = freq;
       g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.4, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + ms / 1000);
@@ -177,6 +185,7 @@ export function initRecord({ debug, openClip }) {
     const v = $('recVideo');
     if (!preview.ready || !v.videoWidth) { msg('Wait for the camera and tracking to start.', 'error'); return; }
     if (!tripod) { msg('Choose where your tripod is standing (Behind or Side) before recording.', 'error'); return; }
+    unlockAudio(); // inside the tap: iOS only unlocks audio during the user gesture
     let left = timerSec;
     const onTap = (e) => { e.preventDefault(); e.stopPropagation(); cancelCountdown(); };
     counting = { timer: null, onTap };
