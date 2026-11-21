@@ -1,0 +1,11 @@
+/* Keep replay controls and analysis within narrow phone widths. */
+.rp-screen { min-width: 0; }
+.rp-screen > *, .rp-screen .block > * { min-width: 0; }
+.rp-screen .rp-info { grid-template-columns: auto minmax(0, 1fr); }
+.rp-screen .rp-info dd { overflow-wrap: anywhere; }
+.rp-screen [aria-labelledby="rpSpeedHeading"] .rec-label { color: var(--court-line); }
+@media (max-width: 400px) {
+  .rp-screen .rec-controls { grid-template-columns: minmax(0, 1fr); }
+  .rp-screen .rp-bar { grid-template-columns: auto minmax(0, 1fr); }
+  .rp-screen .rp-time { grid-column: 1 / -1; text-align: right; }
+}

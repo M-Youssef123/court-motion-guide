@@ -20,6 +20,7 @@ import { SkeletonOverlay } from './overlay.js';
 import { estimateFrame } from './pose.js';
 import { tripodName, orientationName } from './labels.js';
 import { saveVideo, clipFilename } from './save-video.js';
+import { analyzeSwingSpeed } from './features.js';
 
 const $ = (id) => document.getElementById(id);
 const fmtTime = (s) => { s = Math.max(0, Math.floor(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
@@ -48,11 +49,57 @@ function waitFor(el, ev, ms = 6000) {
 }
 
 export function initReplay({ onDeleted } = {}) {
+  const styles = document.createElement('link');
+  styles.rel = 'stylesheet';
+  styles.href = new URL('../replay-analysis.css', import.meta.url).href;
+  document.head.appendChild(styles);
   const video = $('rpVideo');
   const overlay = new SkeletonOverlay($('rpCanvas'), video);
   let clip = null, frames = [], url = null, offsetMs = 0, clipBlob = null;
   let skeletonOn = true, mirrorOn = false, calibrating = false, syncId = 0, openToken = 0;
   let wantedId = null;
+
+  /* ---------- experimental swing-speed summary (saved frames only) ---------- */
+  const speedSection = document.createElement('section');
+  speedSection.className = 'block';
+  speedSection.setAttribute('aria-labelledby', 'rpSpeedHeading');
+  speedSection.innerHTML = `<h2 class="sec-h" id="rpSpeedHeading">Swing speed · estimate</h2>
+    <p class="rec-label" id="rpSpeedStatus" aria-live="polite"></p>
+    <dl class="rp-info" id="rpSpeedValues"></dl>
+    <button class="btn btn-quiet" type="button" id="rpSpeedPeak" disabled>▶ Peak moment</button>
+    <p class="rec-label">Experimental 2D estimate: assumes a 0.50 m adult torso and 1.75× wrist-to-racket multiplier. Not measured racket or ball speed. Camera angle, body proportions and tracking affect accuracy; contact is not detected. The highest-reaching wrist may be the toss arm. Pace bands are not a skill assessment; don’t compare different camera positions.</p>`;
+  $('rpInfo').before(speedSection);
+  let speedSummary = null;
+  function paintSpeed() {
+    const v = clip && clip.video;
+    speedSummary = v ? analyzeSwingSpeed(frames, { width: v.width, height: v.height, offsetMs }) : null;
+    const dl = $('rpSpeedValues');
+    dl.replaceChildren();
+    $('rpSpeedStatus').textContent = speedSummary
+      ? `${speedSummary.dominantArm === 'left' ? 'Left' : 'Right'} arm · Tripod ${tripodName(clip.tripodPosition)}`
+      : 'Speed unavailable: not enough clear, consecutive arm and torso tracking.';
+    if (speedSummary) {
+      const s = speedSummary;
+      const rows = [
+        ['Peak hand', `${s.peakHandSpeedMph.toFixed(1)} mph · ${s.peakHandSpeedKmh.toFixed(1)} km/h`],
+        ['Estimated racket', `${s.estRacketSpeedMph.toFixed(1)} mph · ${s.estRacketSpeedKmh.toFixed(1)} km/h`],
+        ['Estimated pace', s.speedRating],
+        ['Peak moment', `${(s.peakTimestamp / 1000).toFixed(3)} s`],
+      ];
+      rows.forEach(([label, value]) => {
+        const dt = document.createElement('dt'), dd = document.createElement('dd');
+        dt.textContent = label; dd.textContent = value; dl.append(dt, dd);
+      });
+    }
+    $('rpSpeedPeak').hidden = !speedSummary;
+    $('rpSpeedPeak').disabled = !speedSummary || $('rpPlay').disabled;
+  }
+  $('rpSpeedPeak').addEventListener('click', () => {
+    if (!speedSummary || calibrating) return;
+    video.pause();
+    video.currentTime = Math.min(duration(), speedSummary.peakTimestamp / 1000);
+    redraw();
+  });
 
   /* ---------- pose lookup and drawing ---------- */
   function poseAt(tMs, maxGap = 250) {
@@ -194,6 +241,7 @@ export function initReplay({ onDeleted } = {}) {
   /* ---------- open / close ---------- */
   function setControls(on) {
     ['rpPlay', 'rpSeek', 'rpSkel', 'rpMirror', 'rpDelete'].forEach((id) => { $(id).disabled = !on; });
+    $('rpSpeedPeak').disabled = !on || !speedSummary;
     document.querySelectorAll('[data-rprate],[data-rpstep]').forEach((b) => { b.disabled = !on; });
   }
 
@@ -225,6 +273,11 @@ export function initReplay({ onDeleted } = {}) {
     if (url) URL.revokeObjectURL(url);
     url = null; overlay.clear();
     clipBlob = null; setSave('idle');
+    speedSummary = null;
+    $('rpSpeedValues').replaceChildren();
+    $('rpSpeedStatus').textContent = '';
+    $('rpSpeedPeak').disabled = true;
+    $('rpSpeedPeak').hidden = true;
   }
 
   async function enter() {
@@ -241,7 +294,9 @@ export function initReplay({ onDeleted } = {}) {
     const [{ blob }, f] = await Promise.all([store.getClipVideo(clip), store.getClipPoses(clip.id)]);
     if (token !== openToken) return;
     frames = f;
+    offsetMs = clip.sync && clip.sync.offsetMs != null ? clip.sync.offsetMs : defaultOffsetMs();
     info(clip);
+    paintSpeed();
     if (!blob.size) { $('rpStatus').textContent = 'No video was saved for this clip (it was interrupted before any video was written).'; $('rpDelete').disabled = false; return; }
     clipBlob = blob; setSave('ready');
     url = URL.createObjectURL(blob);
@@ -281,6 +336,7 @@ export function initReplay({ onDeleted } = {}) {
       $('rpStatus').textContent = '';
     }
     if (token !== openToken) return;
+    paintSpeed();
     setControls(true);
     startSync();
     redraw();
