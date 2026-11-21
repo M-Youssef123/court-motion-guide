@@ -36,3 +36,7 @@
 - [x] Identify reliable Toss, Trophy and Finish frames from saved poses without ball-outcome claims.
 - [x] Show extracted video frames with skeletons, original reference diagrams and supported differences.
 - [x] Add persistent manual frame selection and verify automatic/manual flows and mobile layouts.
+
+# iPhone video uploads
+- [x] Make loading and frame seeking readiness-aware and cancellable, with explicit load and inline muted playback for iPhone.
+- [x] Test media readiness failures and verify an original-file upload through replay and download; physical iPhone confirmation remains a device retest.

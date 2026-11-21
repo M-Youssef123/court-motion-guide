@@ -1,12 +1,13 @@
 /*
  * upload.js — analyse existing footage picked from the device. Everything stays on-device:
  * the original file is stored untouched (no re-encode) and MoveNet runs frame by frame on a
- * hidden <video> using the same pose model and saved frame format as live recordings.
+ * inline <video> using the same pose model and saved frame format as live recordings.
  * Pose times are video times, so the clip's sync offset is 0.
  */
 import * as store from './store.js';
 import { estimateFrame } from './pose.js';
 import { resolveServingArm } from './contact-analysis.js';
+import { openUploadVideo, seekUploadVideo } from './upload-media.js';
 
 export const MAX_UPLOAD_MB = 500;
 export const MAX_UPLOAD_SECONDS = 120;
@@ -14,11 +15,6 @@ export const SAMPLE_FPS = 15;
 const CHUNK = 4 * 1024 * 1024;
 
 const $ = (id) => document.getElementById(id);
-const wait = (el, ev, ms) => new Promise((res) => {
-  const t = setTimeout(() => { el.removeEventListener(ev, h); res(false); }, ms);
-  function h() { clearTimeout(t); res(true); }
-  el.addEventListener(ev, h, { once: true });
-});
 
 /** Why a picked file can't be used (or null). Pure; exported for tests. */
 export function uploadProblem(file) {
@@ -31,31 +27,33 @@ export function uploadProblem(file) {
 
 export function initUpload({ openClip }) {
   const input = $('upInput'), box = $('upBox'), bar = $('upBar'), msg = $('upMsg'), btn = $('upBtn'), cancel = $('upCancel');
-  let busy = false, aborted = false;
+  let busy = false, aborted = false, controller = null;
 
   const show = (text, kind = '') => { msg.textContent = text; msg.dataset.kind = kind; msg.hidden = !text; };
   const progress = (p, text) => { box.hidden = false; bar.style.width = Math.round(p * 100) + '%'; $('upPct').textContent = text; };
   const done = () => { busy = false; box.hidden = true; btn.disabled = false; btn.removeAttribute('aria-busy'); input.value = ''; };
 
   btn.addEventListener('click', () => { if (!busy) input.click(); });
-  cancel.addEventListener('click', () => { aborted = true; });
+  cancel.addEventListener('click', () => { aborted = true; controller?.abort(); });
   input.addEventListener('change', () => { const f = input.files && input.files[0]; if (f) run(f); });
 
   async function run(file) {
     const problem = uploadProblem(file);
     if (problem) { show(problem, 'error'); input.value = ''; return; }
-    busy = true; aborted = false; show('');
+    busy = true; aborted = false; controller = new AbortController(); show('');
     btn.disabled = true; btn.setAttribute('aria-busy', 'true');
     progress(0, 'Opening video…');
     const url = URL.createObjectURL(file);
     const v = document.createElement('video');
     v.muted = true; v.playsInline = true; v.preload = 'auto'; v.setAttribute('playsinline', '');
-    v.style.cssText = 'position:fixed;left:-9999px;width:2px;height:2px;opacity:0';
-    document.body.appendChild(v);
+    v.setAttribute('webkit-playsinline', '');
+    v.setAttribute('aria-label', 'Video being processed');
+    // Keep a real inline picture rather than a transparent/offscreen decoder surface.
+    v.style.cssText = 'display:block;width:100%;height:180px;object-fit:contain;pointer-events:none;margin-block:8px';
+    box.appendChild(v);
     let session = null, clip = null;
     try {
-      v.src = url;
-      if (!(await wait(v, 'loadeddata', 15000)) || !v.videoWidth) throw new Error('This video couldn’t be opened on this browser. Try an MP4 or MOV file.');
+      await openUploadVideo(v, url, { signal: controller.signal });
       const dur = v.duration;
       if (!Number.isFinite(dur) || dur <= 0) throw new Error('This video has no readable length.');
       if (dur > MAX_UPLOAD_SECONDS) throw new Error(`That video is ${Math.round(dur)} s long. Trim it to ${MAX_UPLOAD_SECONDS} s or less and try again.`);
@@ -70,8 +68,7 @@ export function initUpload({ openClip }) {
       for (let i = 0; i <= n; i++) {
         if (aborted) throw new Error('cancelled');
         const t = Math.min(dur - 0.001, i / SAMPLE_FPS);
-        v.currentTime = t;
-        await wait(v, 'seeked', 5000);
+        await seekUploadVideo(v, t, { signal: controller.signal });
         let p = null;
         try { p = await estimateFrame(v); } catch (e) { if (i === 0) throw new Error('Body tracking couldn’t start on this device.'); }
         const kp = p && p.keypoints ? p.keypoints.flatMap((k) => [+(k.x / W).toFixed(4), +(k.y / H).toFixed(4), +(k.score || 0).toFixed(3)]) : null;
@@ -111,6 +108,7 @@ export function initUpload({ openClip }) {
       else show((e && e.message) || 'Something went wrong processing this video. Please try again.', 'error');
     } finally {
       v.removeAttribute('src'); v.load(); v.remove(); URL.revokeObjectURL(url);
+      controller = null;
     }
   }
 }
