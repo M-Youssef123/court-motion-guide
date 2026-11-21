@@ -15,9 +15,6 @@ export function initProgressCoaching({ openMoment }) {
     <button class="btn btn-quiet" type="button" id="hearBtn" disabled aria-pressed="false">${HEAR_ICON}Hear it</button>
     <p class="kicker">Observations are estimates from body tracking in this camera view. Ball accuracy, ball impact and measured racket speed cannot be determined.</p>`;
   const comparison = initPhaseComparison(host);
-  const notice = document.querySelector('#progress > .notice');
-  notice.textContent = 'Example comparisons and sessions below are illustrations, not your data.';
-  document.getElementById('cmpH').parentElement.before(notice);
   const select = document.getElementById('coachClip'), body = document.getElementById('coachBody');
   const status = document.getElementById('coachStatus'), hear = document.getElementById('hearBtn');
   let selected = null, text = '', utterance = null, token = 0;

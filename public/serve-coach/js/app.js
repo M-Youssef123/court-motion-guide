@@ -7,10 +7,7 @@
  *
  * Camera: runs only on Readiness and on the Record screen (each has its own Preview).
  * Leaving the screen, or hiding the page, stops it. Record screen: record.js.
- *
- * Demo-only behaviour still in place:
- *   - example comparisons and sessions in Progress (below the real
- *     Video recordings library)
+
  */
 
 import { KEYS, prefs, recoverUnfinishedClips, markUnknownTripodPositions } from './store.js';
@@ -28,6 +25,7 @@ import { initDebug } from './debug.js';
 import { initUpload } from './upload.js';
 import { initNotes } from './notes.js';
 import { initJournalExport } from './journal-export.js';
+import { initSessionProgress } from './session-progress.js';
 import { initProgressCoaching } from './progress-coaching.js';
 
 const $ = (id) => document.getElementById(id);
@@ -66,7 +64,7 @@ function route() {
   if (h === 'camera') enterCamera();
   if (h === 'ready') enterReady();
   if (h === 'record' && prev !== 'record') record.enter();
-  if (h === 'progress') { library.render(); notes.render(); coaching.render(); }
+  if (h === 'progress') { library.render(); notes.render(); coaching.render(); renderProgress(); }
   if (h === 'practice') practice.enter();
   if (h === 'home') renderHome();
   if (h === 'replay') replay.enter();
@@ -288,6 +286,7 @@ window.addEventListener('pagehide', stopPreview);
 
 /* ---------- record, replay, library, practice ---------- */
 const replay = initReplay();
+const renderProgress = initSessionProgress();
 const coaching = initProgressCoaching({ openMoment: (id, poseMs) => replay.openMoment(id, poseMs) });
 initUpload({ openClip: (id) => replay.open(id) });
 const library = initLibrary({ openClip: (id) => replay.open(id) });
@@ -311,8 +310,12 @@ async function renderHome() {
   if (hand) $('homeHand').innerHTML = `You serve ${hand === 'L' ? 'left' : 'right'}-handed · <a class="link" href="#hand">Change</a>`;
   const s = (await store.listSessions()).find((x) => x.clips.some((c) => c.status !== 'recording'));
   const el = $('homeRecent');
+  $('homeInsight').textContent = 'Insights appear after a session with enough reliable footage to analyse.';
   if (!s) { el.textContent = 'No practice sessions yet.'; return; }
   const clips = s.clips.filter((c) => c.status !== 'recording');
+  const analyses = await Promise.all([...clips].reverse().map((clip) => store.getClipAnalysis(clip.id)));
+  const feedback = analyses.find((a) => a?.coaching?.status === 'supported')?.coaching;
+  if (currentView === 'home' && feedback) $('homeInsight').textContent = (feedback.improvement || feedback.positive).text;
   const secs = Math.round(clips.reduce((n, c) => n + ((c.video && c.video.durationMs) || 0), 0) / 1000);
   el.textContent = `${new Date(s.createdAt).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} · ${clips.length} clip${clips.length === 1 ? '' : 's'} · ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}${s.plan ? ' · ' + planText(s.plan) : ''}${s.status === 'active' ? ' · in progress' : ''}`;
 }
@@ -321,29 +324,8 @@ const recordDebugTarget = { video: $('recVideo'), canvas: $('recCanvas'), overla
 const _enter = record.enter;
 record.enter = () => { debugTarget = recordDebugTarget; return _enter(); };
 
-/* ---------- progress: comparisons and sessions (example content) ---------- */
-const cmp = {
-  last: ['Your toss stayed put on every serve', 'Shoulder turn still fades near the end', 'Front knee over your ankle'],
-  first: ['Your toss no longer drifts forward, and more serves land in', 'Toss height is steady, just as it was', 'Front knee over your ankle'],
-};
-document.querySelectorAll('[data-cmp]').forEach((b) => b.addEventListener('click', () => {
-  const c = cmp[b.dataset.cmp];
-  document.querySelectorAll('[data-cmp]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
-  $('vBetter').textContent = c[0];
-  $('vSame').textContent = c[1];
-  $('vNext').textContent = c[2];
-}));
-
-const exampleSessions = [
-  { d: 'Example 3', main: 'Front knee', chip: 'fix', r: 'iiioioioii', f: [4, 6, 8, 9, 10] },
-  { d: 'Example 2', main: 'Shoulder turn', chip: 'watch', r: 'iiioioiioo', f: [4, 8, 9, 10] },
-  { d: 'Example 1', main: 'Toss drift', chip: 'watch', r: 'iooiioiooo', f: [2, 3, 5, 6, 8, 10] },
-];
-$('sessions').innerHTML = exampleSessions.map((s) => {
-  const balls = s.r.split('').map((c, k) => '<span class="b' + (c === 'o' ? ' out' : '') + (s.f.indexOf(k + 1) >= 0 ? ' flag' : '') + '"></span>').join('');
-  const ins = s.r.split('i').length - 1;
-  return '<li class="sess"><div class="sess-top"><b>' + s.d + '</b><span class="chip ' + s.chip + '">' + s.main + '</span></div><div class="balls" role="img" aria-label="' + ins + ' of 10 serves in, ' + s.f.length + ' flagged">' + balls + '</div></li>';
-}).join('');
-
-recoverUnfinishedClips().then(markUnknownTripodPositions).then(store.backfillPracticeData).then(() => { if (currentView === 'progress') coaching.render(); }).catch(() => {}); // recover/backfill saved data on-device without rerunning body tracking
+recoverUnfinishedClips().then(markUnknownTripodPositions).then(store.backfillPracticeData).then(() => {
+  if (currentView === 'progress') { coaching.render(); renderProgress(); }
+  if (currentView === 'home') renderHome();
+}).catch(() => {});
 route();

@@ -704,70 +704,23 @@ svg{display:block}
     <p class="lib-tip" id="libTip" hidden><b>On iPhone, recordings aren’t guaranteed to be kept.</b> Safari didn’t give this site protected storage, so it may clear saved videos, for example if the phone runs short of space or you don’t use the site for a while. Opening Serve Coach from the Home Screen (Share › Add to Home Screen) may lower this risk; recordings already saved in Safari might not appear there.</p>
   </div>
 
-  <p class="notice"><b>Example content</b>The coaching, comparisons and sessions below are illustrations, not your data. They arrive in a later version.</p>
-
-  <!-- 1. AI coaching insights -->
-  <div class="block" id="coach" aria-labelledby="coachSecH">
-    <h2 class="sec-h" id="coachSecH">AI coaching insights</h2>
-    <p class="kicker">Example session. 10 serves.</p>
-    <div class="skel" id="coachLoading" hidden aria-label="Your coach is reading the session"><span></span><span></span><span></span></div>
-    <div class="block" id="coachBody">
-      <p class="praise"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>Your toss didn’t drift once. That’s three weeks of work paying off.</p>
-      <h3 class="fix-h"><span class="hl">Keep your front knee over your ankle</span></h3>
-      <p class="fix-p">On second serves your knee slid forward instead of bending down. <b>That pushes your weight forward early, so the ball goes long.</b></p>
-      <ul class="chips" aria-label="Today in short">
-        <li class="chip good">Toss: solid</li>
-        <li class="chip watch">Shoulders: watch</li>
-        <li class="chip fix">Front knee: fix</li>
-      </ul>
-      <div class="row"><button class="btn btn-quiet" type="button" id="hearBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/></svg>Hear it</button></div>
-
-      <div class="compare">
-        <h3>You and your coach</h3>
-        <div class="seg" role="group" aria-label="Serve phase">
-          <button type="button" data-phase="toss" aria-pressed="false">Toss</button>
-          <button type="button" data-phase="trophy" aria-pressed="true">Trophy</button>
-          <button type="button" data-phase="follow" aria-pressed="false">Finish</button>
-        </div>
-        <div class="frame"><img id="phaseImg" src="assets/phase-trophy.svg" alt="Placeholder for the trophy position: your frame and the coach reference will appear here" width="604" height="420"></div>
-        <p class="caption" id="phaseCap"><b>This is where your fix lives.</b> Coach bends the knees over the feet, then drives up.</p>
-      </div>
-
-      <article class="drill" aria-labelledby="drillH">
-        <svg class="ballmark" viewBox="0 0 104 104" aria-hidden="true"><circle cx="52" cy="52" r="52" fill="#D8F23A"/><path d="M14 18c22 18 22 50 0 68M90 18c-22 18-22 50 0 68" fill="none" stroke="#fff" stroke-width="5"/></svg>
-        <div class="drill-top"><div><span class="lbl">Your drill</span><h3 id="drillH" style="font-size:2.1rem">Knee bend pause</h3></div></div>
-        <p class="dose">2 × 8</p>
-        <p>At the bend, pause for one second with your front knee over your ankle, not past it. Then serve.</p>
-        <button class="btn btn-ball" type="button" id="doneBtn">Mark done</button>
-      </article>
-    </div>
-
-    <div class="ask">
-      <h3 class="sub-h">Ask your coach</h3>
-      <div class="qs" id="qs"></div>
-      <div class="answer" id="answer" hidden aria-live="polite"><p id="answerTxt"></p><small>Example answer. Your live coach answers here when connected.</small></div>
-    </div>
-  </div>
-
+  <div class="block" id="coach" aria-labelledby="coachSecH"></div>
 
   <!-- 3. Serve comparisons -->
   <div class="block" aria-labelledby="cmpH">
     <h2 class="sec-h" id="cmpH">Serve comparisons</h2>
     <div class="seg" role="group" aria-label="Compare your latest session with">
-      <button type="button" data-cmp="last" aria-pressed="true">Last session</button>
+      <button type="button" data-cmp="last" aria-pressed="true">Previous session</button>
       <button type="button" data-cmp="first" aria-pressed="false">First session</button>
     </div>
-    <dl class="verdict">
-      <div><dt>Better</dt><dd id="vBetter">Your toss stayed put on every serve</dd></div>
-      <div><dt>Same</dt><dd id="vSame">Shoulder turn still fades near the end</dd></div>
-      <div><dt>Next</dt><dd id="vNext">Front knee over your ankle</dd></div>
-    </dl>
+    <p class="empty" id="comparisonSummary" role="status">Loading practice data…</p>
+    <div class="sessions" id="comparisonGraph" aria-label="Mean 2D elbow angle at overhead reach by practice" hidden></div>
   </div>
 
   <!-- 4. Practice sessions -->
   <div class="block" aria-labelledby="sessH">
     <h2 class="sec-h" id="sessH">Practice sessions</h2>
-    <div class="legend"><span><i style="background:var(--grass)"></i>In</span><span><i style="box-shadow:inset 0 0 0 2.5px var(--muted)"></i>Out</span><span><i style="width:7px;height:7px;background:var(--warn)"></i>Flagged</span></div>
+    <p class="empty" id="sessionsEmpty">No saved practices yet.</p>
     <ul class="sessions" id="sessions"></ul>
   </div>
 
