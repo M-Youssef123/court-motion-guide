@@ -139,9 +139,69 @@ export function initRecord({ debug, openClip }) {
     return saved;
   }
 
+  /* ---------- hands-free countdown (recording starts only at zero) ---------- */
+  let timerSec = +(localStorage.getItem('sc-rec-timer') ?? 3);
+  if (![0, 3, 5].includes(timerSec)) timerSec = 3;
+  const paintTimer = () => document.querySelectorAll('[data-rectimer]').forEach((x) => x.setAttribute('aria-pressed', String(+x.dataset.rectimer === timerSec)));
+  paintTimer();
+  document.querySelectorAll('[data-rectimer]').forEach((b) => b.addEventListener('click', () => {
+    if (counting) return;
+    timerSec = +b.dataset.rectimer; localStorage.setItem('sc-rec-timer', String(timerSec)); paintTimer();
+  }));
+  let counting = null, audioCtx = null;
+  function beep(freq, ms) {
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const t = audioCtx.currentTime, o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = 'sine'; o.frequency.value = freq;
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.4, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + ms / 1000);
+      o.connect(g).connect(audioCtx.destination); o.start(t); o.stop(t + ms / 1000 + 0.02);
+    } catch (e) { /* no audio: the countdown still shows */ }
+  }
+  function showCount(text) {
+    const n = $('recCountN'); n.textContent = text; n.classList.toggle('go', typeof text === 'string');
+    n.style.animation = 'none'; void n.offsetWidth; n.style.animation = '';
+  }
+  function cancelCountdown() {
+    if (!counting) return;
+    clearTimeout(counting.timer);
+    document.removeEventListener('click', counting.onTap, true);
+    counting = null;
+    $('recCount').hidden = true;
+    $('recBtn').textContent = 'Start recording';
+    msg('Countdown cancelled.');
+  }
+  function startCountdown() {
+    msg('');
+    const v = $('recVideo');
+    if (!preview.ready || !v.videoWidth) { msg('Wait for the camera and tracking to start.', 'error'); return; }
+    if (!tripod) { msg('Choose where your tripod is standing (Behind or Side) before recording.', 'error'); return; }
+    let left = timerSec;
+    const onTap = (e) => { e.preventDefault(); e.stopPropagation(); cancelCountdown(); };
+    counting = { timer: null, onTap };
+    // Register after this click finishes so the tap that started it doesn't cancel it.
+    setTimeout(() => { if (counting && counting.onTap === onTap) document.addEventListener('click', onTap, true); }, 0);
+    $('recCount').hidden = false;
+    $('recBtn').textContent = 'Cancel countdown';
+    const tick = () => {
+      if (!counting) return;
+      if (left > 0) { showCount(left); beep(880, 150); left--; counting.timer = setTimeout(tick, 1000); return; }
+      showCount('SERVE!'); beep(1760, 350);
+      document.removeEventListener('click', onTap, true);
+      counting = null;
+      setTimeout(() => { $('recCount').hidden = true; }, 700);
+      startClip();
+    };
+    tick();
+  }
+  // Leaving the screen mid-countdown aborts it.
+  window.addEventListener('hashchange', () => { if (counting) cancelCountdown(); });
+
   $('recBtn').addEventListener('click', () => {
     if (practice.state === 'idle' && !practice.session) { location.hash = '#practice'; return; }
-    if (practice.state === 'idle') startClip();
+    if (practice.state === 'idle' && timerSec > 0) startCountdown();
+    else if (practice.state === 'idle') startClip();
     else if (practice.state === 'recording') stopClip('stopped');
   });
 

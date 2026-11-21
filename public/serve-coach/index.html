@@ -274,6 +274,17 @@ svg{display:block}
 .rec-badge{position:absolute;top:16px;left:50%;transform:translateX(-50%);background:#E5484D;color:#fff;font-weight:700;font-size:.8125rem;padding:4px 10px;border-radius:999px;z-index:3;letter-spacing:.02em}
 .rec-badge::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;background:#fff;margin-right:6px;vertical-align:1px;animation:recblink 1s steps(2) infinite}
 @keyframes recblink{50%{opacity:.2}}
+.rec-go{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:end}
+.rec-go .btn{min-height:56px}
+.rec-timer .seg{min-width:168px}
+.rec-timer .seg button{min-height:48px;padding:0 10px}
+.rec-count{position:absolute;inset:0;z-index:3;display:grid;place-content:center;justify-items:center;gap:6px;background:rgba(11,20,38,.55);border-radius:inherit;color:#fff;cursor:pointer}
+.rec-count span{font-family:var(--display);font-weight:900;font-size:6rem;line-height:1;color:var(--ball);text-shadow:0 4px 18px rgba(0,0,0,.5);animation:recPop .9s ease-out both}
+.rec-count span.go{font-size:3.6rem}
+.rec-count small{font-weight:700;font-size:.85rem;opacity:.85}
+@keyframes recPop{0%{transform:scale(1.6);opacity:0}25%{transform:scale(1);opacity:1}100%{transform:scale(.92);opacity:.9}}
+@media (prefers-reduced-motion:reduce){.rec-count span{animation:none}}
+@media (max-width:380px){.rec-go{grid-template-columns:1fr}.rec-timer .seg{min-width:0}}
 .rec-controls{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .rec-screen .rec-controls>div:nth-child(3){grid-column:1/-1}
 .rec-label{display:block;font-size:.8125rem;font-weight:700;opacity:.85;margin-bottom:6px}
@@ -592,6 +603,7 @@ svg{display:block}
       <video id="recVideo" autoplay playsinline muted></video>
       <canvas id="recCanvas"></canvas>
       <span class="rec-badge" id="recBadge" hidden>REC 0:00</span>
+      <div class="rec-count" id="recCount" aria-live="assertive" hidden><span id="recCountN">3</span><small>Tap to cancel</small></div>
     </div>
     <div class="cam-msg"><p class="cam-status" id="recStatus" role="status" hidden></p><button class="btn btn-quiet" type="button" id="recRetry" hidden>Try again</button></div>
     <div class="rec-controls">
@@ -602,7 +614,11 @@ svg{display:block}
       <div><span class="rec-label" id="recCamL">Phone camera</span>
         <div class="seg" role="group" aria-labelledby="recCamL"><button type="button" data-reccam="environment" aria-pressed="true">Rear</button><button type="button" data-reccam="user" aria-pressed="false">Front</button></div></div>
     </div>
-    <button class="btn btn-ball btn-block" type="button" id="recBtn" disabled>Start recording</button>
+    <div class="rec-go">
+      <button class="btn btn-ball btn-block" type="button" id="recBtn" disabled>Start recording</button>
+      <div class="rec-timer"><span class="rec-label" id="recTimerL">Timer</span>
+        <div class="seg" role="group" aria-labelledby="recTimerL"><button type="button" data-rectimer="0" aria-pressed="false">Off</button><button type="button" data-rectimer="3" aria-pressed="true">3s</button><button type="button" data-rectimer="5" aria-pressed="false">5s</button></div></div>
+    </div>
     <p class="rec-msg" id="recMsg" aria-live="polite" hidden></p>
     <div class="rec-clips">
       <h2 class="rec-h">This practice</h2>
@@ -634,8 +650,8 @@ svg{display:block}
       <button class="btn btn-quiet" type="button" data-rpstep="0.1" aria-label="Forward a little" disabled>0.1 s ›</button>
     </div>
     <div class="rec-controls">
-      <div><span class="rec-label" id="rpSpeedL">Slow motion</span>
-        <div class="seg" role="group" aria-labelledby="rpSpeedL"><button type="button" data-rprate="1" aria-pressed="true" disabled>Normal</button><button type="button" data-rprate="0.5" aria-pressed="false" disabled aria-label="Half speed">½</button><button type="button" data-rprate="0.25" aria-pressed="false" disabled aria-label="Quarter speed">¼</button></div></div>
+      <div><span class="rec-label" id="rpSpeedL">Speed</span>
+        <div class="seg" role="group" aria-labelledby="rpSpeedL"><button type="button" data-rprate="0.25" aria-pressed="false" disabled aria-label="Quarter speed">0.25x</button><button type="button" data-rprate="0.5" aria-pressed="false" disabled aria-label="Half speed">0.5x</button><button type="button" data-rprate="1" aria-pressed="true" disabled aria-label="Normal speed">1x</button></div></div>
       <div><span class="rec-label">View</span>
         <div class="rp-toggles"><button class="rp-tog" type="button" id="rpSkel" aria-pressed="true" disabled>Skeleton</button><button class="rp-tog" type="button" id="rpMirror" aria-pressed="false" disabled>Mirror</button></div></div>
     </div>

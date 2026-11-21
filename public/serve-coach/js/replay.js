@@ -108,9 +108,14 @@ export function initReplay({ onDeleted } = {}) {
     video.currentTime = Math.min(duration(), Math.max(0, video.currentTime + (+b.dataset.rpstep)));
   }));
   document.querySelectorAll('[data-rprate]').forEach((b) => b.addEventListener('click', () => {
-    video.playbackRate = +b.dataset.rprate;
+    setRate(+b.dataset.rprate);
     document.querySelectorAll('[data-rprate]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
   }));
+  // Keep the chosen speed across pause, replay-from-end and any media reload (browsers reset to defaultPlaybackRate on load).
+  let rate = 1;
+  function setRate(r) { rate = r; video.defaultPlaybackRate = r; video.playbackRate = r; }
+  video.addEventListener('loadeddata', () => { if (video.playbackRate !== rate) video.playbackRate = rate; });
+  video.addEventListener('play', () => { if (video.playbackRate !== rate) video.playbackRate = rate; });
   $('rpSkel').addEventListener('click', () => {
     skeletonOn = !skeletonOn;
     $('rpSkel').setAttribute('aria-pressed', String(skeletonOn));
@@ -241,7 +246,7 @@ export function initReplay({ onDeleted } = {}) {
     clipBlob = blob; setSave('ready');
     url = URL.createObjectURL(blob);
     video.src = url;
-    video.playbackRate = 1;
+    setRate(1);
     document.querySelectorAll('[data-rprate]').forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.rprate === '1')));
     // Mirror defaults to how the player saw themselves while recording (front camera).
     mirrorOn = !!(clip.camera && clip.camera.facing === 'user');
