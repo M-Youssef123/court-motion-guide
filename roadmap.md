@@ -12,3 +12,8 @@
 - [x] Save serving-arm selection on new clips and resolve it for older recordings.
 - [x] Estimate contact from trophy, wrist apex and arm reach; calculate local speed and extension coaching.
 - [x] Update replay and test both arms, thresholds, timing, recording storage and mobile controls.
+
+# Personal practice notes
+- [x] Add local, session-linked note storage and preserve existing notes.
+- [x] Enable saving, editing and deleting notes in My notes.
+- [x] Test persistence and session associations; verify the full notes workflow.

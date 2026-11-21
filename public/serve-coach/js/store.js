@@ -21,7 +21,7 @@ export const KEYS = {
   cfg: 'sc-cfg',       // { hand: 'R'|'L', side: 'deuce'|'ad' }
   spot: 'sc-spot',     // legacy (v1.4 camera wizard); no longer used
   profile: 'sc-profile', // { hand: 'R'|'L', handSetAt }
-  notes: 'sc-notes',   // string[]
+  notes: 'sc-notes',   // legacy string[]; migrated to IndexedDB on upgrade
   camera: 'sc-camera', // 'environment' | 'user'
 };
 
@@ -36,7 +36,7 @@ export const prefs = {
 
 /* ------------------------------------------------------------------ IndexedDB basics */
 const DB_NAME = 'serve-coach';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 export const SCHEMA_VERSION = 2; // 2: clips carry tripodPosition and video.orientation
 const BASE = () => ({ schemaVersion: SCHEMA_VERSION, ownerId: 'local', syncState: 'local-only', deletedAt: null });
 
@@ -47,6 +47,7 @@ function db() {
       const req = indexedDB.open(DB_NAME, DB_VERSION);
       req.onupgradeneeded = () => {
         const d = req.result;
+        if (!d.objectStoreNames.contains('sessions')) {
         const s = d.createObjectStore('sessions', { keyPath: 'id' });
         s.createIndex('createdAt', 'createdAt');
         const c = d.createObjectStore('clips', { keyPath: 'id' });
@@ -54,10 +55,23 @@ function db() {
         c.createIndex('status', 'status');
         d.createObjectStore('chunks', { keyPath: ['clipId', 'seq'] });
         d.createObjectStore('poses', { keyPath: ['clipId', 'seq'] });
+        }
+        if (!d.objectStoreNames.contains('notes')) {
+          const notes = d.createObjectStore('notes', { keyPath: 'id' });
+          notes.createIndex('sessionId', 'sessionId');
+          const legacy = prefs.get(KEYS.notes);
+          if (Array.isArray(legacy)) legacy.forEach((text, i) => {
+            if (typeof text === 'string' && text.trim()) notes.put({
+              ...BASE(), id: `legacy-note-${i}`, sessionId: null, text: text.trim(),
+              createdAt: nowIso(), updatedAt: nowIso(), source: 'legacy',
+            });
+          });
+        }
       };
       req.onsuccess = () => {
         const d = req.result;
         d.onversionchange = () => { d.close(); dbPromise = null; };
+        try { localStorage.removeItem(KEYS.notes); } catch (e) { /* migration already committed */ }
         resolve(d);
       };
       req.onerror = () => { dbPromise = null; reject(req.error); };
@@ -132,6 +146,38 @@ export async function getSessionClips(sessionId) {
   return (await getAll('clips', sessionId, 'sessionId')).filter((c) => !c.deletedAt).sort((a, b) => a.seq - b.seq);
 }
 
+/* ------------------------------------------------------------------ personal notes
+ * Shared read API for future on-device coaching. Text remains personal user input,
+ * not coaching instructions. New notes require a real session; legacy notes stay unassigned
+ * until the user explicitly associates them. Writes resolve only after persistence.
+ */
+export async function listNotes(sessionId) {
+  const notes = sessionId === undefined ? await getAll('notes') : await getAll('notes', sessionId, 'sessionId');
+  return notes.sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id));
+}
+export async function saveNote({ id, sessionId, text }) {
+  const clean = typeof text === 'string' ? text.trim() : '';
+  if (!clean) throw new Error('Write a note before saving.');
+  const previous = id ? await get('notes', id) : null;
+  if (id && !previous) throw new Error('This note no longer exists.');
+  if (!sessionId && !(previous && previous.source === 'legacy')) throw new Error('Choose a practice session.');
+  const note = { ...BASE(), ...(previous || {}), id: id || uuid(), sessionId: sessionId || null,
+    text: clean, createdAt: previous ? previous.createdAt : nowIso(), updatedAt: nowIso() };
+  await tx(['notes', 'sessions'], 'readwrite', (t) => {
+    const write = () => t.objectStore('notes').put(note);
+    if (!sessionId) write();
+    else t.objectStore('sessions').get(sessionId).onsuccess = (e) => {
+      const session = e.target.result;
+      if (!session || session.deletedAt) t.abort();
+      else write();
+    };
+  });
+  return note;
+}
+export async function deleteNote(id) {
+  await tx('notes', 'readwrite', (t) => t.objectStore('notes').delete(id));
+}
+
 /* ------------------------------------------------------------------ clips */
 export async function createClip(sessionId, fields) {
   const existing = await getAll('clips', sessionId, 'sessionId');
@@ -183,14 +229,19 @@ export async function deleteClip(clip) {
 /** Permanently delete a whole session and all its clips. */
 export async function deleteSession(sessionId) {
   const clips = await getAll('clips', sessionId, 'sessionId');
-  await tx(['clips', 'chunks', 'poses', 'sessions'], 'readwrite', (t) => {
+  await tx(['clips', 'chunks', 'poses', 'sessions', 'notes'], 'readwrite', (t) => {
     clips.forEach((c) => {
       t.objectStore('clips').delete(c.id);
       t.objectStore('chunks').delete(range(c.id));
       t.objectStore('poses').delete(range(c.id));
     });
     t.objectStore('sessions').delete(sessionId);
+    t.objectStore('notes').index('sessionId').openCursor(sessionId).onsuccess = (e) => {
+      const cursor = e.target.result;
+      if (cursor) { cursor.delete(); cursor.continue(); }
+    };
   });
+  window.dispatchEvent(new Event('practice-notes-changed'));
 }
 
 /**

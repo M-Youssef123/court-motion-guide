@@ -243,6 +243,16 @@ svg{display:block}
 .answer{background:var(--court);color:#fff;border-radius:var(--r-lg) var(--r-lg) var(--r-lg) 6px;padding:14px 16px;display:grid;gap:6px}
 .answer small{opacity:.75;font-size:.8125rem}
 .note-form{display:flex;gap:8px}
+.note-editor{display:grid;gap:8px}
+.note-editor label{font-weight:700;font-size:.9375rem}
+.note-editor select{width:100%;font:inherit;color:var(--ink)}
+.note-form input{width:100%}
+.note-form .btn{flex-shrink:0;padding-inline:16px}
+.note-actions{display:flex;gap:8px;justify-content:flex-end}
+.note-action{width:44px;min-height:44px;padding:0}
+.note-meta{font-size:.8125rem;color:var(--muted)}
+.note-text{white-space:pre-wrap;overflow-wrap:anywhere;margin-block:8px}
+@media(max-width:380px){.note-form{flex-wrap:wrap}.note-form input{flex-basis:100%}}
 .input{flex:1;min-width:0;min-height:52px;padding:0 16px;border-radius:var(--r-pill);border:1.5px solid var(--rule);background:var(--surface)}
 .input::placeholder{color:var(--muted)}
 .notes{list-style:none;margin:0;padding:0;display:grid;gap:8px}
@@ -763,9 +773,15 @@ svg{display:block}
 
   <div class="block" aria-labelledby="notesH">
     <h2 class="sec-h" id="notesH">My notes</h2>
-    <form class="note-form" id="noteForm"><label class="vh" for="noteIn">What did you try today?</label><input class="input" id="noteIn" placeholder="What did you try today?" maxlength="120" autocomplete="off"><button class="btn btn-court" type="submit">Save</button></form>
+    <form class="note-editor" id="noteForm">
+      <label for="noteSession">Practice session</label>
+      <select class="input" id="noteSession"><option value="">Loading sessions…</option></select>
+      <div class="note-form"><label class="vh" for="noteIn">What did you try today?</label><input class="input" id="noteIn" placeholder="What did you try today?" autocomplete="off"><button class="btn btn-court" id="noteSave" type="submit" disabled>Save</button></div>
+      <button class="btn btn-quiet" id="noteCancel" type="button" hidden>Cancel edit</button>
+    </form>
+    <p class="empty" id="noteStatus" role="status" aria-live="polite"></p>
     <ul class="notes" id="notes"></ul>
-    <p class="empty" id="notesEmpty">No notes yet. Jot down what you tried, and your coach will take it into account.</p>
+    <p class="empty" id="notesEmpty">No notes yet.</p>
   </div>
 </section>
 </main>

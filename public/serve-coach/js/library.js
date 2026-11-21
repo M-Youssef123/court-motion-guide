@@ -107,7 +107,7 @@ export function initLibrary({ openClip }) {
       let t = null;
       del.addEventListener('click', async () => {
         if (!del.classList.contains('armed')) {
-          del.classList.add('armed'); del.textContent = `Tap again to delete ${clips.length} clip${clips.length === 1 ? '' : 's'}`;
+          del.classList.add('armed'); del.textContent = `Tap again to delete practice, ${clips.length} clip${clips.length === 1 ? '' : 's'} and notes`;
           t = setTimeout(() => { del.classList.remove('armed'); del.textContent = 'Delete practice'; }, 4000);
           return;
         }

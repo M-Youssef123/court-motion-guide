@@ -26,6 +26,7 @@ import { getPoseInfo } from './pose.js';
 import * as store from './store.js';
 import { initDebug } from './debug.js';
 import { initUpload } from './upload.js';
+import { initNotes } from './notes.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -63,7 +64,7 @@ function route() {
   if (h === 'camera') enterCamera();
   if (h === 'ready') enterReady();
   if (h === 'record' && prev !== 'record') record.enter();
-  if (h === 'progress') library.render();
+  if (h === 'progress') { library.render(); notes.render(); }
   if (h === 'practice') practice.enter();
   if (h === 'home') renderHome();
   if (h === 'replay') replay.enter();
@@ -287,6 +288,7 @@ window.addEventListener('pagehide', stopPreview);
 const replay = initReplay();
 initUpload({ openClip: (id) => replay.open(id) });
 const library = initLibrary({ openClip: (id) => replay.open(id) });
+const notes = initNotes();
 const record = initRecord({ debug, openClip: (id) => replay.open(id, 'record') });
 const practice = initPractice({
   getHand: () => profile().hand || null,
@@ -405,24 +407,6 @@ $('sessions').innerHTML = exampleSessions.map((s) => {
   const ins = s.r.split('i').length - 1;
   return '<li class="sess"><div class="sess-top"><b>' + s.d + '</b><span class="chip ' + s.chip + '">' + s.main + '</span></div><div class="balls" role="img" aria-label="' + ins + ' of 10 serves in, ' + s.f.length + ' flagged">' + balls + '</div></li>';
 }).join('');
-
-/* ---------- notes ---------- */
-const notes = prefs.get(KEYS.notes) || [];
-function drawNotes() {
-  $('notes').innerHTML = '';
-  notes.forEach((n) => { const li = document.createElement('li'); li.textContent = n; $('notes').appendChild(li); });
-  $('notesEmpty').hidden = notes.length > 0;
-}
-drawNotes();
-$('noteForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  const v = $('noteIn').value.trim();
-  if (!v) return;
-  notes.unshift(v);
-  prefs.set(KEYS.notes, notes);
-  $('noteIn').value = '';
-  drawNotes();
-});
 
 recoverUnfinishedClips().then(markUnknownTripodPositions).catch(() => {}); // clips left 'recording' by a crash/closed tab → kept as interrupted
 route();
