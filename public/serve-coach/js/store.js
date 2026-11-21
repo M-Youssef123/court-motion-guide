@@ -20,6 +20,7 @@
 
 import { buildClipAnalysis, ANALYSIS_VERSION } from './practice-data.js';
 import { servingArm } from './contact-analysis.js';
+import { COACHING_VERSION } from './coaching-insights.js';
 
 export const KEYS = {
   cfg: 'sc-cfg',       // { hand: 'R'|'L', side: 'deuce'|'ad' }
@@ -289,7 +290,7 @@ export async function backfillPracticeData() {
   for (const clip of clips) {
     try {
       const analysis = await getClipAnalysis(clip.id);
-      if (!analysis || analysis.schemaVersion !== ANALYSIS_VERSION) await finalizeClipData(clip.id);
+      if (!analysis || analysis.schemaVersion !== ANALYSIS_VERSION || analysis.coaching?.version !== COACHING_VERSION) await finalizeClipData(clip.id);
     } catch (e) { failures.push({ clipId: clip.id, error: e.name || 'StorageError' }); }
   }
   return failures;
@@ -316,8 +317,8 @@ export async function getJournalData() {
         const record = cursor.value;
         if (!record.deletedAt) {
           if (name === 'analyses') {
-            const { clipId, sessionId, metrics, generatedAt, handSource, dominantHand } = record;
-            result.analyses.push({ clipId, sessionId, metrics, generatedAt, handSource, dominantHand });
+            const { clipId, sessionId, metrics, generatedAt, handSource, dominantHand, coaching } = record;
+            result.analyses.push({ clipId, sessionId, metrics, generatedAt, handSource, dominantHand, coaching });
           } else result[name].push(record);
         }
         cursor.continue();

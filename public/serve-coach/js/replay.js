@@ -57,7 +57,7 @@ export function initReplay({ onDeleted } = {}) {
   const overlay = new SkeletonOverlay($('rpCanvas'), video);
   let clip = null, frames = [], url = null, offsetMs = 0, clipBlob = null;
   let skeletonOn = true, mirrorOn = false, calibrating = false, syncId = 0, openToken = 0;
-  let wantedId = null, selectedArm = null;
+  let wantedId = null, selectedArm = null, wantedPoseMs = null;
 
   /* ---------- experimental swing-speed summary (saved frames only) ---------- */
   const speedSection = document.createElement('section');
@@ -350,6 +350,12 @@ export function initReplay({ onDeleted } = {}) {
     setControls(true);
     startSync();
     redraw();
+    if (Number.isFinite(wantedPoseMs)) {
+      video.pause();
+      video.currentTime = Math.min(duration(), Math.max(0, (wantedPoseMs - offsetMs) / 1000));
+      wantedPoseMs = null;
+      redraw();
+    }
     // Persist the same contact-local estimates shown here after pose/video alignment.
     // Legacy preference fallback remains marked in the analysis, not rewritten into capture data.
     store.finalizeClipData(clip.id, { arm: selectedArm, offsetMs }).catch(() => {
@@ -380,10 +386,15 @@ export function initReplay({ onDeleted } = {}) {
   return {
     open(clipId, from = 'progress') {
       wantedId = clipId;
+      wantedPoseMs = null;
       const back = document.querySelector('.rp-back');
       back.href = '#' + from;
       back.textContent = from === 'record' ? '‹ Back to recording' : '‹ Video recordings';
       if (location.hash === '#replay') enter(); else location.hash = '#replay';
+    },
+    openMoment(clipId, poseTimestampMs) {
+      this.open(clipId);
+      wantedPoseMs = poseTimestampMs;
     },
     hasClip: () => !!wantedId,
     enter, leave,

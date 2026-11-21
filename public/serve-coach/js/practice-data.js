@@ -1,5 +1,6 @@
 /* Versioned derived data over saved poses only; never changes video or runs MoveNet. */
 import { analyzeServeContact, servingArm } from './contact-analysis.js';
+import { buildCoachingInsights } from './coaching-insights.js';
 
 export const ANALYSIS_VERSION = 1;
 const MIN_CONFIDENCE = 0.35;
@@ -43,7 +44,7 @@ export function buildClipAnalysis(clip, frames, { arm = clip.dominantHand || cli
   const width = clip.video?.width, height = clip.video?.height;
   const strokeType = clip.strokeType || 'serve';
   const contact = strokeType === 'serve' ? analyzeServeContact(frames, { width, height, arm, offsetMs }) : null;
-  return {
+  const analysis = {
     schemaVersion: ANALYSIS_VERSION, algorithmVersion: 'serve-contact-v1',
     clipId: clip.id, sessionId: clip.sessionId, strokeType, dominantHand: servingArm(arm),
     handSource: clip.dominantHand || clip.servingArm ? 'recorded' : servingArm(arm) ? 'replay-preference-fallback' : 'unknown',
@@ -64,4 +65,6 @@ export function buildClipAnalysis(clip, frames, { arm = clip.dominantHand || cli
     },
     availability: contact ? 'contact-estimated' : 'contact-unavailable',
   };
+  analysis.coaching = buildCoachingInsights(clip, frames, analysis);
+  return analysis;
 }

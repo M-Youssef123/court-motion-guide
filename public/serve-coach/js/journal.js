@@ -71,6 +71,14 @@ export function buildJournal(data, exportedAt = new Date()) {
         `  Contact extension: ${finite(angle) ? `${angle.toFixed(1)} degrees (estimate)` : 'Unavailable'}`,
         `  Coaching advice: ${extensionInsight(angle) || 'Unavailable: no clear contact estimate saved.'}`);
       if (analysis?.handSource === 'replay-preference-fallback') lines.push(`  Analysis hand: ${hand(analysis.dominantHand)} (replay preference fallback, not captured hand)`);
+      if (analysis?.coaching) {
+        lines.push('  Recording-based coaching:');
+        if (analysis.coaching.status !== 'supported') lines.push(`    Insufficient data: ${analysis.coaching.reason}`);
+        for (const [key, label] of [['positive', 'What went well'], ['improvement', 'Potential improvement'], ['recommendation', 'Try next']]) {
+          const item = analysis.coaching[key];
+          if (item) lines.push(`    ${label}: ${item.text}`, `    Saved frame: ${item.evidence.frameIndex + 1}${finite(item.evidence.timestampMs) ? ` / ${(item.evidence.timestampMs / 1000).toFixed(3)}s (estimated video timing)` : ''}`);
+        }
+      }
     }
     lines.push('');
   }

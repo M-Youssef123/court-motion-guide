@@ -9,7 +9,7 @@
  * Leaving the screen, or hiding the page, stops it. Record screen: record.js.
  *
  * Demo-only behaviour still in place:
- *   - example coaching, comparisons, sessions and answers in Progress (below the real
+ *   - example comparisons and sessions in Progress (below the real
  *     Video recordings library)
  */
 
@@ -28,6 +28,7 @@ import { initDebug } from './debug.js';
 import { initUpload } from './upload.js';
 import { initNotes } from './notes.js';
 import { initJournalExport } from './journal-export.js';
+import { initProgressCoaching } from './progress-coaching.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -54,7 +55,7 @@ function route() {
   if (h !== 'ready') stopPreview();
   if (prev === 'record' && h !== 'record') record.leave();
   if (prev === 'replay' && h !== 'replay') replay.leave();
-  if (prev === 'progress' && h !== 'progress') hearStop();
+  if (prev === 'progress' && h !== 'progress') coaching.stop();
   VIEWS.forEach((v) => { $(v).hidden = v !== h; });
   const tab = TAB_FOR[h];
   document.querySelectorAll('.tab').forEach((t) => {
@@ -65,7 +66,7 @@ function route() {
   if (h === 'camera') enterCamera();
   if (h === 'ready') enterReady();
   if (h === 'record' && prev !== 'record') record.enter();
-  if (h === 'progress') { library.render(); notes.render(); }
+  if (h === 'progress') { library.render(); notes.render(); coaching.render(); }
   if (h === 'practice') practice.enter();
   if (h === 'home') renderHome();
   if (h === 'replay') replay.enter();
@@ -287,6 +288,7 @@ window.addEventListener('pagehide', stopPreview);
 
 /* ---------- record, replay, library, practice ---------- */
 const replay = initReplay();
+const coaching = initProgressCoaching({ openMoment: (id, poseMs) => replay.openMoment(id, poseMs) });
 initUpload({ openClip: (id) => replay.open(id) });
 const library = initLibrary({ openClip: (id) => replay.open(id) });
 const notes = initNotes();
@@ -319,73 +321,6 @@ const recordDebugTarget = { video: $('recVideo'), canvas: $('recCanvas'), overla
 const _enter = record.enter;
 record.enter = () => { debugTarget = recordDebugTarget; return _enter(); };
 
-/* ---------- progress: AI coaching insights (example content) ---------- */
-/* "Hear it" toggles speech: first tap reads the coaching aloud, the button becomes
- * "Stop audio" while speaking, tapping again stops immediately, and the button resets
- * when the speech ends, when speech fails, or when the player leaves the page. */
-const HEAR_TEXT = "Nice session. Your toss didn't drift once. Next time, keep your front knee over your ankle on second serves. Do the knee bend pause, two sets of eight.";
-const HEAR_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/></svg>';
-const STOP_ICON = '<svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
-let speaking = false;
-function hearReset() {
-  speaking = false;
-  const b = $('hearBtn');
-  b.innerHTML = HEAR_ICON + 'Hear it';
-  b.setAttribute('aria-pressed', 'false');
-}
-function hearStop() {
-  if (!speaking) return;
-  hearReset();
-  try { window.speechSynthesis.cancel(); } catch (e) { /* speech not available */ }
-}
-$('hearBtn').addEventListener('click', () => {
-  if (speaking) { hearStop(); return; }
-  const s = window.speechSynthesis;
-  if (!s || !s.speak) return;
-  try {
-    s.cancel(); // never let two readings overlap
-    const u = new SpeechSynthesisUtterance(HEAR_TEXT);
-    u.rate = 0.95;
-    speaking = true;
-    const b = $('hearBtn');
-    b.innerHTML = STOP_ICON + 'Stop audio';
-    b.setAttribute('aria-pressed', 'true');
-    u.onend = u.onerror = () => { if (speaking) hearReset(); };
-    s.speak(u);
-  } catch (e) { hearReset(); }
-});
-window.addEventListener('pagehide', hearStop);
-const phases = {
-  toss: ['assets/phase-toss.svg', 'Placeholder for the toss: your frame and the coach reference will appear here', '<b>Looking good here.</b> Coach keeps the tossing arm straight and releases high, slightly in front.'],
-  trophy: ['assets/phase-trophy.svg', 'Placeholder for the trophy position: your frame and the coach reference will appear here', '<b>This is where your fix lives.</b> Coach bends the knees over the feet, then drives up.'],
-  follow: ['assets/phase-follow.svg', 'Placeholder for the finish: your frame and the coach reference will appear here', '<b>Not measured yet.</b> Coach lands on the front foot inside the baseline, balanced.'],
-};
-document.querySelectorAll('[data-phase]').forEach((b) => b.addEventListener('click', () => {
-  const p = phases[b.dataset.phase];
-  document.querySelectorAll('[data-phase]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
-  $('phaseImg').src = p[0];
-  $('phaseImg').alt = p[1];
-  $('phaseCap').innerHTML = p[2];
-}));
-$('doneBtn').addEventListener('click', function () {
-  const s = document.createElement('span');
-  s.className = 'stamp';
-  s.textContent = 'Done today. Nice work.';
-  this.replaceWith(s);
-});
-
-const qa = [
-  ['Why do my second serves go wrong?', 'When you ease off, your front knee slides forward instead of bending down. Sit into the bend, knee over ankle, then drive up. The knee bend pause fixes exactly that.'],
-  ['What should I warm up with?', 'Ten toss-and-catch reps to settle the toss, then five slow shadow serves with a full turn. Keep it easy; it’s about feel.'],
-  ['Is my serve getting better?', 'Yes. Your toss drifting forward was the big problem three weeks ago, and it’s gone. In matches your serve is still your weakest shot, so keep going.'],
-];
-$('qs').innerHTML = qa.map((q, k) => '<button type="button" class="q" data-q="' + k + '" aria-pressed="false">' + q[0] + '</button>').join('');
-document.querySelectorAll('[data-q]').forEach((b) => b.addEventListener('click', () => {
-  document.querySelectorAll('[data-q]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
-  $('answer').hidden = false;
-  $('answerTxt').textContent = qa[+b.dataset.q][1];
-}));
-
 /* ---------- progress: comparisons and sessions (example content) ---------- */
 const cmp = {
   last: ['Your toss stayed put on every serve', 'Shoulder turn still fades near the end', 'Front knee over your ankle'],
@@ -410,5 +345,5 @@ $('sessions').innerHTML = exampleSessions.map((s) => {
   return '<li class="sess"><div class="sess-top"><b>' + s.d + '</b><span class="chip ' + s.chip + '">' + s.main + '</span></div><div class="balls" role="img" aria-label="' + ins + ' of 10 serves in, ' + s.f.length + ' flagged">' + balls + '</div></li>';
 }).join('');
 
-recoverUnfinishedClips().then(markUnknownTripodPositions).then(store.backfillPracticeData).catch(() => {}); // recover/backfill saved data on-device without rerunning body tracking
+recoverUnfinishedClips().then(markUnknownTripodPositions).then(store.backfillPracticeData).then(() => { if (currentView === 'progress') coaching.render(); }).catch(() => {}); // recover/backfill saved data on-device without rerunning body tracking
 route();

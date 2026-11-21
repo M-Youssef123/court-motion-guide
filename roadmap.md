@@ -26,3 +26,8 @@
 # Practice journal export
 - [x] Export all saved sessions, notes and available analysis feedback as plain readable Markdown, without videos.
 - [x] Add a mobile-safe export/download control in Progress and verify saved file contents.
+
+# Recording-based coaching insights
+- [x] Derive conservative positive, improvement and recommendation observations with saved-frame evidence and insufficient-data gates.
+- [x] Replace example coaching cards and speech with recording selection, linked replay moments and dynamic readings.
+- [x] Test evidence rules, persistence and the complete Progress/replay/audio flow on mobile and desktop.
