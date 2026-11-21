@@ -7,3 +7,8 @@
 - [x] Identify overhead hitting extension after a bent-arm preparation and before follow-through, rejecting toss-only motion.
 - [x] Seek to that estimated hitting moment, withholding the shortcut when the sequence is unclear.
 - [x] Test phase selection and verify replay seeking without changing playback speed or downloads.
+
+# Selected serving-arm contact analysis
+- [x] Save serving-arm selection on new clips and resolve it for older recordings.
+- [x] Estimate contact from trophy, wrist apex and arm reach; calculate local speed and extension coaching.
+- [x] Update replay and test both arms, thresholds, timing, recording storage and mobile controls.

@@ -20,7 +20,7 @@ import { SkeletonOverlay } from './overlay.js';
 import { estimateFrame } from './pose.js';
 import { tripodName, orientationName } from './labels.js';
 import { saveVideo, clipFilename } from './save-video.js';
-import { analyzeSwingSpeed, findHittingMoment } from './features.js';
+import { analyzeServeContact, resolveServingArm } from './contact-analysis.js';
 
 const $ = (id) => document.getElementById(id);
 const fmtTime = (s) => { s = Math.max(0, Math.floor(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
@@ -57,7 +57,7 @@ export function initReplay({ onDeleted } = {}) {
   const overlay = new SkeletonOverlay($('rpCanvas'), video);
   let clip = null, frames = [], url = null, offsetMs = 0, clipBlob = null;
   let skeletonOn = true, mirrorOn = false, calibrating = false, syncId = 0, openToken = 0;
-  let wantedId = null;
+  let wantedId = null, selectedArm = null;
 
   /* ---------- experimental swing-speed summary (saved frames only) ---------- */
   const speedSection = document.createElement('section');
@@ -66,42 +66,42 @@ export function initReplay({ onDeleted } = {}) {
   speedSection.innerHTML = `<h2 class="sec-h" id="rpSpeedHeading">Swing speed · estimate</h2>
     <p class="rec-label" id="rpSpeedStatus" aria-live="polite"></p>
     <dl class="rp-info" id="rpSpeedValues"></dl>
-    <button class="btn btn-quiet" type="button" id="rpSpeedPeak" disabled>▶ Hitting moment · estimate</button>
+    <button class="btn btn-quiet" type="button" id="rpSpeedPeak" disabled>▶ Jump to Contact</button>
     <p class="rec-label" id="rpHitStatus" aria-live="polite"></p>
-    <p class="rec-label">Experimental 2D estimate: assumes a 0.50 m adult torso and 1.75× wrist-to-racket multiplier. Not measured racket or ball speed. The hitting moment estimates overhead arm extension between preparation and follow-through, not exact ball contact. Camera angle, body proportions and tracking affect accuracy. Pace bands are not a skill assessment; don’t compare different camera positions.</p>`;
+    <p class="rec-label" id="rpExtensionInsight"></p>
+    <p class="rec-label">Contact and extension are estimated from your selected serving arm, not detected ball impact. Speeds use a 0.50 m torso reference and 1.75× wrist-to-racket multiplier; they are not measured racket or ball speed. Camera angle, proportions and tracking affect accuracy.</p>`;
   $('rpInfo').before(speedSection);
-  let speedSummary = null, hittingMoment = null;
+  let speedSummary = null;
   function paintSpeed() {
     const v = clip && clip.video;
-    speedSummary = v ? analyzeSwingSpeed(frames, { width: v.width, height: v.height, offsetMs }) : null;
-    hittingMoment = v ? findHittingMoment(frames, { width: v.width, height: v.height, offsetMs }) : null;
-    $('rpHitStatus').textContent = hittingMoment ? '' : 'Hitting moment unavailable: no clear preparation, overhead extension and follow-through.';
+    speedSummary = v ? analyzeServeContact(frames, { width: v.width, height: v.height, arm: selectedArm, offsetMs }) : null;
+    $('rpHitStatus').textContent = speedSummary
+      ? `Estimated contact · ${(speedSummary.contactTimestamp / 1000).toFixed(3)} s${speedSummary.handSpeedMph === null ? ' · Speed unavailable: not enough clear tracking near contact.' : ''}`
+      : selectedArm ? 'Contact estimate unavailable: no clear bent-arm wind-up followed by peak reach above the head.' : 'Select your serving hand on Home to analyze this clip.';
+    $('rpExtensionInsight').textContent = speedSummary?.insight || '';
     const dl = $('rpSpeedValues');
     dl.replaceChildren();
-    $('rpSpeedStatus').textContent = speedSummary
-      ? `${speedSummary.dominantArm === 'left' ? 'Left' : 'Right'} arm · Tripod ${tripodName(clip.tripodPosition)}`
-      : 'Speed unavailable: not enough clear, consecutive arm and torso tracking.';
+    $('rpSpeedStatus').textContent = selectedArm
+      ? `${selectedArm === 'left' ? 'Left' : 'Right'} serving arm · Tripod ${tripodName(clip.tripodPosition)}${clip.servingArm ? '' : ' · Using current serving-hand preference'}` : '';
     if (speedSummary) {
       const s = speedSummary;
       const rows = [
-        ['Peak hand', `${s.peakHandSpeedMph.toFixed(1)} mph · ${s.peakHandSpeedKmh.toFixed(1)} km/h`],
-        ['Estimated racket', `${s.estRacketSpeedMph.toFixed(1)} mph · ${s.estRacketSpeedKmh.toFixed(1)} km/h`],
-        ['Estimated pace', s.speedRating],
-        ['Speed peak', `${(s.peakTimestamp / 1000).toFixed(3)} s`],
-        ...(hittingMoment ? [['Hitting moment · estimate', `${(hittingMoment.timestamp / 1000).toFixed(3)} s`]] : []),
+        ['Estimated racket speed', s.estRacketSpeedMph === null ? 'Unavailable' : `${s.estRacketSpeedMph.toFixed(1)} MPH · ${s.estRacketSpeedKmh.toFixed(1)} KM/H`],
+        ['Hand whip speed', s.handSpeedMph === null ? 'Unavailable' : `${s.handSpeedMph.toFixed(1)} MPH · ${s.handSpeedKmh.toFixed(1)} KM/H`],
+        ['Extension at contact · estimate', `${s.elbowAngle.toFixed(1)}°`],
       ];
       rows.forEach(([label, value]) => {
         const dt = document.createElement('dt'), dd = document.createElement('dd');
         dt.textContent = label; dd.textContent = value; dl.append(dt, dd);
       });
     }
-    $('rpSpeedPeak').hidden = !hittingMoment;
-    $('rpSpeedPeak').disabled = !hittingMoment || $('rpPlay').disabled;
+    $('rpSpeedPeak').hidden = !speedSummary;
+    $('rpSpeedPeak').disabled = !speedSummary || $('rpPlay').disabled;
   }
   $('rpSpeedPeak').addEventListener('click', () => {
-    if (!hittingMoment || calibrating) return;
+    if (!speedSummary || calibrating) return;
     video.pause();
-    video.currentTime = Math.min(duration(), hittingMoment.timestamp / 1000);
+    video.currentTime = Math.min(duration(), speedSummary.contactTimestamp / 1000);
     redraw();
   });
 
@@ -245,7 +245,7 @@ export function initReplay({ onDeleted } = {}) {
   /* ---------- open / close ---------- */
   function setControls(on) {
     ['rpPlay', 'rpSeek', 'rpSkel', 'rpMirror', 'rpDelete'].forEach((id) => { $(id).disabled = !on; });
-    $('rpSpeedPeak').disabled = !on || !hittingMoment;
+    $('rpSpeedPeak').disabled = !on || !speedSummary;
     document.querySelectorAll('[data-rprate],[data-rpstep]').forEach((b) => { b.disabled = !on; });
   }
 
@@ -278,7 +278,8 @@ export function initReplay({ onDeleted } = {}) {
     url = null; overlay.clear();
     clipBlob = null; setSave('idle');
     speedSummary = null;
-    hittingMoment = null;
+    selectedArm = null;
+    $('rpExtensionInsight').textContent = '';
     $('rpHitStatus').textContent = '';
     $('rpSpeedValues').replaceChildren();
     $('rpSpeedStatus').textContent = '';
@@ -296,6 +297,9 @@ export function initReplay({ onDeleted } = {}) {
     clip = wantedId ? await store.getClip(wantedId) : null;
     if (token !== openToken) return;
     if (!clip) { location.hash = '#progress'; return; }
+    const session = await store.getSession(clip.sessionId);
+    if (token !== openToken) return;
+    selectedArm = resolveServingArm(clip, session, store.prefs.get(store.KEYS.profile));
     $('rpTitle').textContent = `Clip ${clip.seq} · ${sideName(clip.side)} · Tripod ${tripodName(clip.tripodPosition)}`;
     const [{ blob }, f] = await Promise.all([store.getClipVideo(clip), store.getClipPoses(clip.id)]);
     if (token !== openToken) return;

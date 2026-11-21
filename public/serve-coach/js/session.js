@@ -16,6 +16,7 @@
 
 import * as store from './store.js';
 import { ClipRecorder, BITRATE, recordingSupported } from './recorder.js';
+import { resolveServingArm } from './contact-analysis.js';
 
 export const MIN_START_MB = 200;     // refuse to start below this much free space
 export const WARN_START_MB = 500;    // warn below this
@@ -81,6 +82,7 @@ export class PracticeSession {
       store.requestPersistentStorage(); // best effort; granted on Android, usually not on iPhone
 
       const clip = await store.createClip(this.session.id, {
+        servingArm: resolveServingArm(null, this.session, store.prefs.get(store.KEYS.profile)),
         side: meta.side || null,
         tripodPosition: meta.tripodPosition || 'unknown',
         camera: meta.camera || {},

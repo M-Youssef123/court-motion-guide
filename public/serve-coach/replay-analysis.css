@@ -3,6 +3,7 @@
 .rp-screen > *, .rp-screen .block > * { min-width: 0; }
 .rp-screen .rp-info { grid-template-columns: auto minmax(0, 1fr); }
 .rp-screen .rp-info dd { overflow-wrap: anywhere; }
+.rp-screen [aria-labelledby="rpSpeedHeading"] .rp-info { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); }
 .rp-screen [aria-labelledby="rpSpeedHeading"] .rec-label { color: var(--court-line); }
 @media (max-width: 400px) {
   .rp-screen .rec-controls { grid-template-columns: minmax(0, 1fr); }
