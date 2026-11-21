@@ -8,6 +8,7 @@
 import * as store from './store.js';
 import { planText } from './practice.js';
 import { tripodName } from './labels.js';
+import { saveVideo, clipFilename } from './save-video.js';
 
 const $ = (id) => document.getElementById(id);
 const fmtTime = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
@@ -34,6 +35,35 @@ export function initLibrary({ openClip }) {
     if (st.freeMB != null && !isIOS()) line += ` · about ${st.freeMB >= 1000 ? (st.freeMB / 1000).toFixed(1) + ' GB' : Math.round(st.freeMB) + ' MB'} free`;
     $('libStorage').textContent = line;
     $('libTip').hidden = !(isIOS() && !standalone() && st.persisted !== true);
+  }
+
+  /* Separate bar under each clip: saves the original recording (blob loaded up front so iOS keeps the tap). */
+  function saveBar(c) {
+    const bar = document.createElement('div'); bar.className = 'lib-save';
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'lib-save-btn'; b.disabled = true;
+    b.textContent = 'Loading…';
+    const msg = document.createElement('span'); msg.className = 'lib-save-msg'; msg.setAttribute('aria-live', 'polite');
+    bar.append(b, msg);
+    let blob = null, timer = null;
+    const label = 'Download video';
+    store.getClipVideo(c).then((r) => {
+      if (r.blob && r.blob.size) { blob = r.blob; b.disabled = false; b.textContent = label; }
+      else b.textContent = 'No video saved';
+    }).catch(() => { b.textContent = 'Video unavailable'; });
+    const reset = () => { timer = setTimeout(() => { b.disabled = false; b.textContent = label; msg.textContent = ''; }, 5000); };
+    b.addEventListener('click', () => {
+      if (!blob) return;
+      clearTimeout(timer);
+      const name = clipFilename(new Date(c.createdAt), blob.type || (c.video && c.video.mime));
+      b.disabled = true; b.textContent = 'Preparing video…'; msg.textContent = '';
+      saveVideo(blob, name).then((r) => {
+        b.disabled = false;
+        if (r === 'cancelled') { b.textContent = label; msg.textContent = 'Not saved'; }
+        else { b.textContent = 'Saved ✓'; msg.textContent = r === 'shared' ? 'Tap “Save Video” to keep it in Photos' : name; }
+        reset();
+      }).catch(() => { b.disabled = false; b.textContent = label; msg.textContent = 'Couldn’t save. Try again.'; reset(); });
+    });
+    return bar;
   }
 
   function sessionCard(s) {
@@ -67,6 +97,7 @@ export function initLibrary({ openClip }) {
       btn.append(name, meta, go);
       btn.addEventListener('click', () => openClip(c.id));
       row.appendChild(btn);
+      if (c.status !== 'interrupted-empty') row.appendChild(saveBar(c));
       ul.appendChild(row);
     });
     li.appendChild(ul);
