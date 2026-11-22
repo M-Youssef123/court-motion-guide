@@ -1,4 +1,6 @@
 # Replay movement cleanup
+- [x] Remove the 2D-angle explanation and prominently label the supported wrist-speed reading.
+- [x] Verify speed visibility and replay behavior on desktop/mobile.
 - [x] Replace the full-swing selector with a 300 ms wrist-trail toggle.
 - [x] Show qualified hand estimates or clip-relative movement without percentage speed labels.
 - [x] Run all tests and verify replay controls, playback and scrubbing on desktop/mobile.

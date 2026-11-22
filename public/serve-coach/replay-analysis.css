@@ -23,3 +23,7 @@
 }
 .rp-jumps { display: flex; flex-wrap: wrap; gap: .5rem; }
 .rp-jumps .btn { flex: 1 1 9rem; min-height: 44px; }
+.rp-wrist-reading { margin: .75rem 0 1rem; }
+.rp-wrist-heading { font-family: var(--body); font-size: 1rem; color: var(--court-line); }
+.rp-wrist-reading #rpWrist { margin: .25rem 0; font-size: 1.75rem; font-weight: 700; line-height: 1.2; color: var(--ball); overflow-wrap: anywhere; }
+.rp-wrist-reading .rec-label { margin: .25rem 0; }

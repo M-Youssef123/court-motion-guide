@@ -78,7 +78,7 @@ function waitFor(el, ev, ms = 6000) {
 export function initReplay({ onDeleted } = {}) {
   const styles = document.createElement("link");
   styles.rel = "stylesheet";
-  styles.href = new URL("../replay-analysis.css?v=1.6.2", import.meta.url).href;
+  styles.href = new URL("../replay-analysis.css?v=1.6.6", import.meta.url).href;
   document.head.appendChild(styles);
   const video = $("rpVideo");
   const overlay = new SkeletonOverlay($("rpCanvas"), video);
@@ -101,21 +101,24 @@ export function initReplay({ onDeleted } = {}) {
   const movement = document.createElement("section");
   movement.className = "block";
   movement.innerHTML = `<h2 class="sec-h">Movement in replay</h2>
+    <div class="rp-wrist-reading" aria-live="polite">
+      <h3 class="rp-wrist-heading">Estimated wrist speed</h3>
+      <p id="rpWrist"></p>
+      <p class="rec-label" id="rpWristContext"></p>
+    </div>
     <div class="rp-toggles">
       <button class="rp-tog" id="rpAngles" type="button" aria-pressed="false" disabled>2D angles</button>
       <button class="rp-tog" id="rpToss" type="button" aria-pressed="false" hidden>Toss path</button>
       <button class="rp-tog" id="rpTrajectoryTrail" type="button" aria-pressed="false" disabled>Wrist trail</button>
     </div>
     <p class="rec-label" id="rpMeasurements"></p>
-    <p class="rec-label" id="rpWrist"></p>
     <div class="rp-jumps" role="group" aria-label="Jump to a tracked moment">
       <button class="btn btn-quiet" id="rpSpeedPeak" type="button" disabled>Fastest wrist movement</button>
       <button class="btn btn-quiet" id="rpContact" type="button" disabled>Overhead reach</button>
     </div>
     <p class="rec-label" id="rpReachStatus"></p>
     <button class="btn btn-quiet" id="rpRealign" type="button" hidden>Re-align tracking</button>
-    <p class="rec-label" id="rpWristNote"></p>
-    <p class="rec-label">2D angles describe body positions in the camera view, not 3D joint angles. Framing and perspective affect them.</p>`;
+    <p class="rec-label" id="rpWristNote"></p>`;
   $("rpInfo").before(movement);
   let analysis = null,
     anglesOn = false,
@@ -138,10 +141,13 @@ export function initReplay({ onDeleted } = {}) {
       "much-faster": "Much faster than this clip’s average",
     };
     $("rpWrist").textContent = summary.kind === "estimated-speed"
-      ? `Estimated hand speed at overhead reach: ~${summary.mph.toFixed(0)} mph`
+      ? `~${summary.mph.toFixed(1)} mph`
+      : "Speed estimate unavailable";
+    $("rpWristContext").textContent = summary.kind === "estimated-speed"
+      ? "At estimated overhead reach"
       : summary.kind === "relative-motion"
-        ? `Peak wrist movement: ${bands[summary.band]}`
-        : "Wrist movement unavailable. Continuous serving-wrist tracking is needed.";
+        ? `Peak wrist movement: ${bands[summary.band]}. Tracking does not support an mph estimate.`
+        : "Continuous serving-wrist and torso tracking are needed.";
     $("rpWristNote").textContent = summary.kind === "estimated-speed"
       ? "Approximate 2D wrist estimate using an assumed 0.50 m torso. Not measured racket or ball speed; overhead reach is not verified ball contact."
       : summary.kind === "relative-motion"
@@ -521,6 +527,7 @@ export function initReplay({ onDeleted } = {}) {
     selectedArm = null;
     measurement.hidden = true;
     $("rpWrist").textContent = "";
+    $("rpWristContext").textContent = "";
     $("rpWristNote").textContent = "";
   }
 
