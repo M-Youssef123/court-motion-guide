@@ -21,9 +21,9 @@ it("routes the actual static app to Progress and wires coach and backup controls
   // @ts-expect-error static JS module
   await import("../../public/serve-coach/js/app.js");
   await vi.waitFor(() =>
-    expect(document.querySelector("#sessions")?.textContent).toContain("1 saved clip"),
+    expect(document.querySelector("#progress")?.hasAttribute("hidden")).toBe(false),
   );
-  expect(document.querySelector("#progress")?.hasAttribute("hidden")).toBe(false);
+  expect(document.querySelector("#sessions")).toBeNull();
   expect(document.querySelector("#backupImport")?.textContent).toBe("Restore JSON backup");
   const question = [...document.querySelectorAll("button")].find(
     (b) => b.textContent === "What do you see in my technique?",

@@ -87,6 +87,7 @@ export function initSessionProgress() {
   const list = document.getElementById("sessions");
   let request = 0;
   return async function render() {
+    if (!list) return;
     const token = ++request;
     try {
       const data = await getJournalData();
