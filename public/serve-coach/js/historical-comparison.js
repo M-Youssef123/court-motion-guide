@@ -9,7 +9,7 @@ export function initHistoricalComparison(host, chooseUpload) {
   panel.className = "block historical";
   panel.innerHTML = `<summary class="sec-h">Compare saved serves</summary>
     <p role="status" data-status></p>
-    <button type="button" class="btn btn-quiet" data-upload>Upload a clip to compare</button>
+    <button type="button" class="btn btn-quiet" data-upload>Record a serve to compare</button>
     <button type="button" class="btn btn-quiet" data-one aria-pressed="false">Show one clip at a time</button>
     <label>Playback <select class="input" data-mode><option value="independent">Independent</option><option value="start">Sync from start</option><option value="trophy">Align at estimated Trophy</option><option value="contact">Align at estimated overhead reach</option></select></label>
     <div class="historical-controls" hidden><button class="btn btn-quiet" type="button" data-play>Play both</button>

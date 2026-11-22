@@ -23,7 +23,6 @@ import { tripodName } from "./labels.js";
 import { getPoseInfo } from "./pose.js";
 import * as store from "./store.js";
 import { initDebug } from "./debug.js";
-import { initUpload } from "./upload.js";
 import { initNotes } from "./notes.js";
 import { initBackupControls } from "./backup-controls.js";
 import { initJournalExport } from "./journal-export.js";
@@ -425,13 +424,11 @@ window.addEventListener("pagehide", stopPreview);
 const replay = initReplay();
 const renderProgress = initSessionProgress();
 const historical = initHistoricalComparison($("coach"), () => {
-  go("home");
-  $("upBtn").click();
+  go("practice");
 });
 const coaching = initProgressCoaching({
   openMoment: (id, poseMs, toss) => replay.openMoment(id, poseMs, toss),
 });
-initUpload({ openClip: (id) => replay.open(id) });
 const library = initLibrary({
   openClip: (id) => replay.open(id),
   onDeleted: () => {
