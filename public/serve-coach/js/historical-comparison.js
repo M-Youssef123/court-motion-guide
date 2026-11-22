@@ -10,6 +10,7 @@ export function initHistoricalComparison(host, chooseUpload) {
   panel.innerHTML = `<summary class="sec-h">Compare saved serves</summary>
     <p role="status" data-status></p>
     <button type="button" class="btn btn-quiet" data-upload>Upload a clip to compare</button>
+    <button type="button" class="btn btn-quiet" data-one aria-pressed="false">Show one clip at a time</button>
     <label>Playback <select class="input" data-mode><option value="independent">Independent</option><option value="start">Sync from start</option><option value="trophy">Align at estimated Trophy</option><option value="contact">Align at estimated overhead reach</option></select></label>
     <div class="historical-controls" hidden><button class="btn btn-quiet" type="button" data-play>Play both</button>
     <input type="range" min="0" max="0" step="0.01" aria-label="Scrub both clips">
@@ -32,6 +33,27 @@ export function initHistoricalComparison(host, chooseUpload) {
   document.head.append(link);
   const q = (selector) => panel.querySelector(selector);
   q("[data-upload]").addEventListener("click", chooseUpload);
+  // Lighter mode for phones that stutter playing two videos at once.
+  const one = q("[data-one]");
+  let shown = 0;
+  function applyOne() {
+    const on = one.getAttribute("aria-pressed") === "true";
+    panel.querySelectorAll(".historical-pair section").forEach((el, i) => {
+      el.hidden = on && i !== shown;
+      if (el.hidden) el.querySelector("video").pause();
+    });
+    one.textContent = on ? `Showing clip ${"AB"[shown]} · switch to ${"AB"[1 - shown]}` : "Show one clip at a time";
+  }
+  one.addEventListener("click", () => {
+    const on = one.getAttribute("aria-pressed") === "true";
+    if (!on) one.setAttribute("aria-pressed", "true");
+    else if (shown === 0) shown = 1;
+    else {
+      shown = 0;
+      one.setAttribute("aria-pressed", "false");
+    }
+    applyOne();
+  });
   const status = q("[data-status]"),
     mode = q("[data-mode]"),
     play = q("[data-play]");

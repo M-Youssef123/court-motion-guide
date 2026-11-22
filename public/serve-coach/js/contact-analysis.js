@@ -74,7 +74,8 @@ function armPose(frame, arm, width, height) {
   return { t: frame.t, wrist, angle };
 }
 
-/** Trophy <115° within preceding 500 ms; selected wrist apex above nose; extension >135°.
+/** Trophy <115° within preceding 750 ms; selected wrist apex above the serving shoulder; extension >135°.
+ * One missing wrist sample beside the apex is tolerated when the sample beyond it is tracked.
  * Velocity uses the contact-frame 0.50 m torso scale and a centered three-sample
  * moving average nearest contact, restricted to ±3 saved frames. No global speed peak.
  */
@@ -104,24 +105,28 @@ export function analyzeServeContact(frames, { width, height, arm, offsetMs = 0 }
   const hit = poses[contactFrameIndex];
   const frame = frames[contactFrameIndex];
   if (!hit || !frame || hit.angle <= 135) return null;
-  const nose = point(frame, 0, width, height);
-  if (!nose || hit.wrist.y >= nose.y) return null;
-  // Missing selected-wrist tracking adjacent to the apex makes its timing uncertain.
-  if (
-    contactFrameIndex > 0 &&
-    !point(frames[contactFrameIndex - 1], ARMS[arm].wrist, width, height)
-  )
-    return null;
-  if (
-    contactFrameIndex < frames.length - 1 &&
-    !point(frames[contactFrameIndex + 1], ARMS[arm].wrist, width, height)
-  )
-    return null;
+  // Side-on footage often hides the nose; the serving shoulder is always tracked here.
+  const shoulder = point(frame, ARMS[arm].shoulder, width, height);
+  if (!shoulder || hit.wrist.y >= shoulder.y) return null;
+  // A single blurred sample beside the apex is tolerated; two in a row make timing uncertain.
+  const tracked = (i) => i < 0 || i >= frames.length || !!point(frames[i], ARMS[arm].wrist, width, height);
+  for (const step of [-1, 1]) {
+    const near = contactFrameIndex + step;
+    if (!tracked(near) && !tracked(near + step)) return null;
+    if (!tracked(near) && (near + step < 0 || near + step >= frames.length)) return null;
+  }
   let trophy = false;
-  let next = hit;
+  let next = hit,
+    skipped = 0;
   for (let i = contactFrameIndex - 1; i >= 0; i--) {
     const p = poses[i];
-    if (!p || next.t <= p.t || next.t - p.t > MAX_GAP_MS || hit.t - p.t > 500) break;
+    if (!p) {
+      // Bridge one blurred sample; two in a row end the trophy search.
+      if (skipped++) break;
+      continue;
+    }
+    if (next.t <= p.t || next.t - p.t > MAX_GAP_MS * (1 + skipped) || hit.t - p.t > 750) break;
+    skipped = 0;
     if (p.angle < 115) trophy = true;
     next = p;
   }

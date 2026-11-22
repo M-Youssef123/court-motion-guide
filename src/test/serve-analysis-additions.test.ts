@@ -1,10 +1,4 @@
 import { describe, expect, it } from "vitest";
-import {
-  ballCandidates,
-  possibleContact,
-  traceBallToss,
-  // @ts-expect-error static JS module
-} from "../../public/serve-coach/js/ball-toss.js";
 // @ts-expect-error static JS module
 import { coachTopic, topicAdvice } from "../../public/serve-coach/js/coach-qa.js";
 // @ts-expect-error static JS module
@@ -37,60 +31,6 @@ describe("velocity-coloured swing", () => {
     );
     expect(selectSwing({ trajectory: broken }, 0, 110, 230)).toBeNull();
   });
-});
-
-describe("local toss tracking", () => {
-  it("finds a small fluorescent contour and ignores a large stationary region", () => {
-    const width = 40,
-      height = 40;
-    const data = new Uint8ClampedArray(width * height * 4);
-    const pixel = (x: number, y: number) => data.set([185, 240, 32, 255], (y * width + x) * 4);
-    for (let x = 12; x < 15; x++) for (let y = 10; y < 13; y++) pixel(x, y);
-    for (let x = 23; x < 35; x++) for (let y = 24; y < 34; y++) pixel(x, y);
-    const result = ballCandidates(
-      { data, width, height },
-      { left: 0, right: 1, top: 0, bottom: 1 },
-    );
-    expect(result).toEqual([{ x: 13.5 / 40, y: 11.5 / 40 }]);
-  });
-
-  it("follows a toss launched near the non-serving hand through an observed ascent and descent", () => {
-    const samples = [0.54, 0.48, 0.43, 0.4, 0.39, 0.402, 0.42, 0.45].map((y, i) => ({
-      t: i * 42,
-      candidates: [
-        { x: 0.45 + i * 0.005, y },
-        { x: 0.53, y: 0.46 },
-      ],
-    }));
-    const release = { x: 0.44, y: 0.56, t: 0 };
-    const result = traceBallToss(samples, release, 1);
-    expect(result.apex.t).toBe(168);
-    expect(result.path).toHaveLength(8);
-    expect(traceBallToss(samples.slice(0, 5), release, 1)).toBeNull();
-    expect(traceBallToss(samples, { x: 0.9, y: 0.9, t: 0 }, 1)).toBeNull();
-  });
-});
-
-it("offers a possible contact cue only with a distinct visible departure near overhead reach", () => {
-  const path = [
-    { x: 0.4, y: 0.34, t: 42 },
-    { x: 0.41, y: 0.36, t: 84 },
-    { x: 0.42, y: 0.39, t: 126 },
-  ];
-  const track = { apex: path[0], path };
-  const reach = { x: 0.4, y: 0.38, t: 125 };
-  const departure = [
-    { t: 168, candidates: [{ x: 0.5, y: 0.34 }] },
-    { t: 210, candidates: [{ x: 0.58, y: 0.29 }] },
-  ];
-  expect(possibleContact(departure, track, reach, 1)).toMatchObject({ t: 126 });
-  expect(possibleContact(departure.slice(0, 1), track, reach, 1)).toBeNull();
-  expect(
-    possibleContact([{ t: 168, candidates: [{ x: 0.43, y: 0.42 }] }], track, reach, 1),
-  ).toBeNull();
-  expect(
-    possibleContact([{ t: 168, candidates: [{ x: 0.5, y: 0.34 }] }], track, null, 1),
-  ).toBeNull();
 });
 
 describe("free-text coach", () => {

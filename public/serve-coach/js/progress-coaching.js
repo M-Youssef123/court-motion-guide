@@ -3,7 +3,6 @@ import { ANALYSIS_VERSION } from "./practice-data.js";
 import { COACHING_VERSION } from "./coaching-insights.js";
 import { initTraining } from "./training.js";
 import { initPhaseComparison } from "./phase-comparison.js";
-import { initTossProgress } from "./toss-progress.js";
 
 const HEAR_ICON =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/></svg>';
@@ -22,7 +21,6 @@ export function initProgressCoaching({ openMoment }) {
     <p class="kicker">Coaching uses provisional thresholds for 2D body tracking in this camera view.</p>`;
   const comparison = initPhaseComparison(host);
   const renderTraining = initTraining(host);
-  const renderToss = initTossProgress(host, openMoment);
   const select = document.getElementById("coachClip"),
     body = document.getElementById("coachBody");
   const status = document.getElementById("coachStatus"),
@@ -88,7 +86,6 @@ export function initProgressCoaching({ openMoment }) {
     hear.disabled = true;
     body.replaceChildren();
     comparison.clear();
-    renderToss(null);
     reanalyse.disabled = true;
     renderTraining(null, null, null, true);
     status.textContent = "Reading saved movement data…";
@@ -112,7 +109,6 @@ export function initProgressCoaching({ openMoment }) {
       if (request !== token) return;
       reanalyse.disabled = !canReanalyse;
       comparison.load(clip);
-      renderToss(clip);
       const feedback = analysis?.coaching;
       renderTraining(clip, feedback, analysis);
       document.getElementById("coachSource").textContent =
@@ -187,7 +183,6 @@ export function initProgressCoaching({ openMoment }) {
     text = "";
     body.replaceChildren();
     comparison.clear();
-    renderToss(null);
     reanalyse.disabled = true;
     renderTraining(null, null, null, true);
     document.getElementById("coachSource").textContent = "";

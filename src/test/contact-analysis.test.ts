@@ -94,22 +94,21 @@ describe("selected serving arm contact analysis", () => {
   });
   it("requires a trophy angle strictly below 115 degrees", () => {
     const frames = serve();
-    for (const i of [3, 4, 5]) angleAt(frames, i, 115.01);
+    for (const i of [0, 1, 2, 3, 4, 5]) angleAt(frames, i, 115.01);
     expect(analyzeServeContact(frames, size)).toBeNull();
     angleAt(frames, 5, 114.99);
     expect(analyzeServeContact(frames, size)?.contactFrameIndex).toBe(8);
   });
-  it("requires trophy within the preceding 0.5 seconds inclusive", () => {
+  it("requires trophy within the preceding 0.75 seconds", () => {
     const frames = serve();
-    required(frames[6]).t = 700;
-    required(frames[7]).t = 800;
-    required(frames[8]).t = 1000;
-    for (let i = 9; i < frames.length; i++) required(frames[i]).t += 200;
-    expect(analyzeServeContact(frames, size)?.contactTimestamp).toBe(1000);
-    required(frames[8]).t = 1001;
+    for (let i = 0; i <= 7; i++) angleAt(frames, i, 115.01);
+    angleAt(frames, 1, 114.99); // 700 ms before contact
+    expect(analyzeServeContact(frames, size)?.contactFrameIndex).toBe(8);
+    angleAt(frames, 1, 115.01);
+    angleAt(frames, 0, 114.99); // 800 ms before contact
     expect(analyzeServeContact(frames, size)).toBeNull();
   });
-  it("requires extension strictly above 135 degrees and wrist above nose", () => {
+  it("requires extension strictly above 135 degrees and wrist above the serving shoulder", () => {
     const frames = serve();
     // Keep the tested frame the global wrist apex.
     for (const i of [6, 7, 9]) required(frames[i]).kp[10 * 3 + 1] = 0.29;
@@ -117,8 +116,8 @@ describe("selected serving arm contact analysis", () => {
     expect(analyzeServeContact(frames, size)).toBeNull();
     angleAt(frames, 8, 135.01);
     expect(analyzeServeContact(frames, size)?.contactFrameIndex).toBe(8);
-    required(frames[8]).kp[1] = 0.1;
-    expect(analyzeServeContact(frames, size)).toBeNull();
+    required(frames[8]).kp[1] = 0.1; // nose above the wrist no longer blocks side-on footage
+    expect(analyzeServeContact(frames, size)?.contactFrameIndex).toBe(8);
   });
   it("uses the contact-frame torso scale of 0.50 / 200", () => {
     const frames = serve();
@@ -158,8 +157,8 @@ describe("selected serving arm contact analysis", () => {
       analyzeServeContact(wide, { ...size, width: 1920, height: 1080 })?.handSpeedMph,
     ).toBeCloseTo(baseline.handSpeedMph, 8);
   });
-  it("withholds contact on missing serving-arm tracking, gaps or missing nose", () => {
-    for (const index of [0, 6, 8, 10]) {
+  it("withholds contact on missing serving-arm tracking or gaps", () => {
+    for (const index of [6, 8]) {
       const frames = serve();
       required(frames[8]).kp[index * 3 + 2] = 0.349;
       expect(analyzeServeContact(frames, size)).toBeNull();
@@ -172,6 +171,13 @@ describe("selected serving arm contact analysis", () => {
     ).toBeNull();
     expect(analyzeServeContact([], size)).toBeNull();
     expect(analyzeServeContact(serve(), { ...size, arm: null })).toBeNull();
+  });
+  it("bridges a single blurred wrist sample beside the apex", () => {
+    const frames = serve();
+    required(frames[7]).kp[10 * 3 + 2] = 0.1;
+    expect(analyzeServeContact(frames, size)?.contactFrameIndex).toBe(8);
+    required(frames[6]).kp[10 * 3 + 2] = 0.1;
+    expect(analyzeServeContact(frames, size)).toBeNull();
   });
   it("retains contact but withholds speed when torso scale is unavailable", () => {
     const frames = serve();

@@ -60,11 +60,8 @@ export function initTraining(host) {
     <span class="lbl">Your drill</span><h3 class="sub-h"></h3><p class="dose"></p><p class="instructions"></p>
     <button class="btn btn-ball" id="doneBtn" type="button">Mark done</button>
     <p class="empty" role="status"></p>
-    </article><h3 class="sub-h">Ask your coach</h3><p class="kicker">Uses your saved measurements and offline coaching rules.</p>
-    <form class="row"><label class="field-label">Your question
-      <input class="input" name="question" type="text" maxlength="300" required placeholder="Ask about your serve">
-    </label><button class="btn btn-ball" type="submit">Ask</button></form>
-    <div class="qs"></div><div class="answer" role="status" hidden></div>`;
+    </article><h3 class="sub-h">Coach topics</h3><p class="kicker">Pick a topic. Answers use your saved measurements and built-in coaching rules.</p>
+    <div class="qs" role="group" aria-label="Coach topics"></div><div class="answer" role="status" hidden></div>`;
   host.append(section);
   const article = section.querySelector("article");
   const done = section.querySelector("#doneBtn");
@@ -72,8 +69,6 @@ export function initTraining(host) {
   const status = article.querySelector('[role="status"]');
   let current = null,
     questionToken = 0;
-  const form = section.querySelector("form"),
-    input = form.elements.question;
   async function answer(question, key = coachTopic(question)) {
     const request = ++questionToken,
       context = current;
@@ -98,7 +93,7 @@ export function initTraining(host) {
         context?.feedback,
         context?.analysis?.metrics?.serve?.trophyHoldSeconds,
         context?.analysis?.metrics,
-        context?.clip.ballToss,
+        null,
       );
       const lines = [
         [
@@ -123,7 +118,7 @@ export function initTraining(host) {
                       comparisons: comparisonSeries(data, context?.clip.id),
                       sessionId: context?.clip.sessionId,
                     })
-                  : "Try asking about net clearance, pronation, trophy tempo, wrist speed, toss, consistency, or a drill. This coach uses local tennis rules.",
+                  : "Pick one of the topics above.",
               ],
             ]),
       ];
@@ -141,12 +136,7 @@ export function initTraining(host) {
         output.textContent = "Saved evidence could not be read. Try again.";
     }
   }
-  form.addEventListener("submit", (event) => {
-    event.preventDefault();
-    const question = input.value.trim();
-    if (question) answer(question);
-  });
-  const questionControls = [...form.elements];
+  const questionControls = [];
   for (const [key, text] of [
     ...Object.entries(QUESTIONS),
     ...PROMPTS.map((prompt) => [coachTopic(prompt), prompt]),
@@ -158,7 +148,7 @@ export function initTraining(host) {
     questionControls.push(button);
     section.querySelector(".qs").append(button);
     button.addEventListener("click", () => {
-      input.value = text;
+      for (const other of questionControls) other.setAttribute("aria-pressed", String(other === button));
       answer(text, key);
     });
   }

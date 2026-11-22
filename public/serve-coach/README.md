@@ -20,12 +20,9 @@ serve-coach/
     overlay.js          skeleton drawing, video-to-canvas mapping
     debug.js            hidden debug panel (?debug=1)
     store.js            LocalStorage now; IndexedDB from Stage 3/4
-    tracking-quality.js placeholder: Stage 2
     session.js          placeholder: Stage 3
     recorder.js         placeholder: Stage 4
     features.js         placeholder: Stage 5
-    serve-detector.js   placeholder: Stage 6
-    coach.js            placeholder: later stage
 ```
 
 Pinned libraries (same versions as the original tracker): `@tensorflow/tfjs-core`, `-converter`, `-backend-webgl` **4.11.0**, `@tensorflow-models/pose-detection` **2.1.3**.

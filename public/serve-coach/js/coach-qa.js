@@ -5,6 +5,7 @@ export const PROMPTS = [
   "Why is my serve hitting the net?",
   "How can I improve my pronation?",
   "Am I rushing my trophy pose?",
+  "How fast is my wrist moving?",
 ];
 
 export function coachTopic(question) {
@@ -52,11 +53,9 @@ export function topicAdvice(topic, feedback, trophyHold, metrics, toss) {
   if (topic === "toss")
     return {
       evidence:
-        Number.isFinite(toss?.heightAboveHeadPct) && Number.isFinite(toss?.driftFromHeadPct)
-          ? `The detected toss apex was ${toss.heightAboveHeadPct.toFixed(1)}% of frame height above your head, with ${Math.abs(toss.driftFromHeadPct).toFixed(1)}% of frame width in horizontal drift.`
-          : "This recording has no usable ball-toss scan yet.",
+        "Body tracking can't see the ball, so toss height and drift aren't measured. Use the Toss tab to compare your tossing-arm position with the reference.",
       advice:
-        "Film three tosses from the same marked position. Leave room above your head for the apex, then use Scan toss under Toss consistency.",
+        "Film three tosses from the same marked position. Leave room above your head for the apex, then compare them in Replay at 0.25× speed.",
     };
 
   if (topic === "net")
