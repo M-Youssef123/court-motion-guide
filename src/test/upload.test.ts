@@ -4,9 +4,12 @@ import { uploadProblem } from "../../public/serve-coach/js/upload.js";
 // @ts-expect-error plain JS module
 import { openUploadVideo, seekUploadVideo } from "../../public/serve-coach/js/upload-media.js";
 describe("uploadProblem", () => {
-  it("rejects non-video files", () => expect(uploadProblem({ type: "image/png", size: 10 })).toMatch(/isn’t a video/));
-  it("rejects files over 500 MB", () => expect(uploadProblem({ type: "video/mp4", size: 501 * 1024 * 1024 })).toMatch(/too large/));
-  it("accepts a normal video", () => expect(uploadProblem({ type: "video/quicktime", size: 1000 })).toBeNull());
+  it("rejects non-video files", () =>
+    expect(uploadProblem({ type: "image/png", size: 10 })).toMatch(/isn’t a video/));
+  it("rejects files over 500 MB", () =>
+    expect(uploadProblem({ type: "video/mp4", size: 501 * 1024 * 1024 })).toMatch(/too large/));
+  it("accepts a normal video", () =>
+    expect(uploadProblem({ type: "video/quicktime", size: 1000 })).toBeNull());
 });
 
 class MediaStub extends EventTarget {
@@ -21,7 +24,9 @@ class MediaStub extends EventTarget {
   play = vi.fn(() => Promise.reject(new Error("Playback denied")));
   pause = vi.fn();
   metadata() {
-    this.readyState = 1; this.videoWidth = 720; this.videoHeight = 1280;
+    this.readyState = 1;
+    this.videoWidth = 720;
+    this.videoHeight = 1280;
     this.dispatchEvent(new Event("loadedmetadata"));
   }
 }
@@ -30,7 +35,9 @@ describe("upload media readiness", () => {
   it("loads and kicks playback immediately, but waits for decoded data after metadata", async () => {
     const video = new MediaStub();
     let finished = false;
-    const opening = openUploadVideo(video, "blob:test").then(() => { finished = true; });
+    const opening = openUploadVideo(video, "blob:test").then(() => {
+      finished = true;
+    });
     expect(video.load).toHaveBeenCalledOnce();
     expect(video.play).toHaveBeenCalledOnce();
     video.metadata();
@@ -45,13 +52,17 @@ describe("upload media readiness", () => {
 
   it("accepts readiness reached synchronously in load without loadeddata", async () => {
     const video = new MediaStub();
-    video.load.mockImplementation(() => { video.metadata(); video.readyState = 2; });
+    video.load.mockImplementation(() => {
+      video.metadata();
+      video.readyState = 2;
+    });
     await openUploadVideo(video, "blob:cached");
     expect(video.src).toBe("blob:cached");
   });
 
   it("cancels while metadata is pending and pauses playback", async () => {
-    const video = new MediaStub(), controller = new AbortController();
+    const video = new MediaStub(),
+      controller = new AbortController();
     const opening = openUploadVideo(video, "blob:test", { signal: controller.signal });
     controller.abort();
     await expect(opening).rejects.toThrow("cancelled");
@@ -68,13 +79,17 @@ describe("upload media readiness", () => {
 
   it("does not sample a frame while the seek or decoding is incomplete", async () => {
     const video = new MediaStub();
-    video.readyState = 1; video.seeking = true;
+    video.readyState = 1;
+    video.seeking = true;
     let finished = false;
-    const seek = seekUploadVideo(video, 0.2).then(() => { finished = true; });
+    const seek = seekUploadVideo(video, 0.2).then(() => {
+      finished = true;
+    });
     video.dispatchEvent(new Event("seeked"));
     await Promise.resolve();
     expect(finished).toBe(false);
-    video.seeking = false; video.readyState = 2;
+    video.seeking = false;
+    video.readyState = 2;
     video.dispatchEvent(new Event("canplay"));
     await seek;
     expect(finished).toBe(true);
@@ -82,18 +97,22 @@ describe("upload media readiness", () => {
   });
 
   it("does not wait for seeked when an already decoded frame is at the target", async () => {
-    const video = new MediaStub(); video.readyState = 2;
+    const video = new MediaStub();
+    video.readyState = 2;
     await seekUploadVideo(video, 0);
     expect(video.currentTime).toBe(0);
   });
 
   it("rejects a stalled seek instead of silently analysing the previous frame", async () => {
-    const video = new MediaStub(); video.seeking = true;
+    const video = new MediaStub();
+    video.seeking = true;
     await expect(seekUploadVideo(video, 0.4, { timeoutMs: 5 })).rejects.toThrow("stopped decoding");
   });
 });
 
 it("accepts a generic MIME type for a camera MOV but rejects an unrelated file", () => {
-  expect(uploadProblem({ type: "application/octet-stream", name: "Serve.MOV", size: 100 })).toBeNull();
+  expect(
+    uploadProblem({ type: "application/octet-stream", name: "Serve.MOV", size: 100 }),
+  ).toBeNull();
   expect(uploadProblem({ type: "", name: "notes.txt", size: 100 })).toMatch(/isn’t a video/);
 });

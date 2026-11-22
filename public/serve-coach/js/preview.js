@@ -8,9 +8,9 @@
  * Front camera: the live preview box is mirrored (selfie view). Recordings are not mirrored.
  */
 
-import { startCamera, stopCamera, isCameraActive, isMobileDevice } from './camera.js';
-import { loadMoveNet, startPoseLoop, stopPoseLoop, getPoseInfo } from './pose.js';
-import { SkeletonOverlay } from './overlay.js';
+import { startCamera, stopCamera, isCameraActive, isMobileDevice } from "./camera.js";
+import { loadMoveNet, startPoseLoop, stopPoseLoop, getPoseInfo } from "./pose.js";
+import { SkeletonOverlay } from "./overlay.js";
 
 export class Preview {
   /**
@@ -25,24 +25,33 @@ export class Preview {
     this.onPoses = opts.onPoses || null;
     this.token = 0;
     this.on = false;
-    this.facing = 'environment';
+    this.facing = "environment";
     this.info = null;
-    if (els.retry) els.retry.addEventListener('click', () => { if (this.wantOn) this.start(this.facing); });
+    if (els.retry)
+      els.retry.addEventListener("click", () => {
+        if (this.wantOn) this.start(this.facing);
+      });
   }
 
   setStatus(text, kind, retry) {
     const el = this.els.status;
     if (!el) return;
-    el.textContent = text || '';
-    el.dataset.kind = kind || '';
+    el.textContent = text || "";
+    el.dataset.kind = kind || "";
     el.hidden = !text;
     if (this.els.retry) this.els.retry.hidden = !retry;
   }
 
-  get ready() { return this.on && !!this.info && getPoseInfo().running; }
+  get ready() {
+    return this.on && !!this.info && getPoseInfo().running;
+  }
   /** Camera picture available (tracking may or may not be running). */
-  get cameraOn() { return this.on && !!this.info && this.video.videoWidth > 0; }
-  get stream() { return this.video.srcObject; }
+  get cameraOn() {
+    return this.on && !!this.info && this.video.videoWidth > 0;
+  }
+  get stream() {
+    return this.video.srcObject;
+  }
 
   /** Start (or restart with another camera). Resolves true when the camera and tracking run. */
   async start(facing = this.facing) {
@@ -52,28 +61,43 @@ export class Preview {
     this.facing = facing;
     this.on = true;
     const token = ++this.token;
-    this.setStatus('Starting camera…');
+    this.setStatus("Starting camera…");
     const res = await startCamera(this.video, facing);
-    if (token !== this.token || res.code === 'Cancelled') return false;
+    if (token !== this.token || res.code === "Cancelled") return false;
     if (!res.ok) {
       this.on = false;
-      this.debug.note('camera error ' + res.code);
-      this.setStatus(res.message, 'error', true);
+      this.debug.note("camera error " + res.code);
+      this.setStatus(res.message, "error", true);
       return false;
     }
     this.info = res.info;
-    this.debug.note('camera on ' + res.info.videoWidth + 'x' + res.info.videoHeight + ' facing=' + res.info.facingMode + ' (' + res.info.request + ')');
-    const front = res.info.facingMode === 'user' || (facing === 'user' && res.info.facingMode === 'unknown');
-    if (this.els.box) this.els.box.classList.toggle('mirror', front);
+    this.debug.note(
+      "camera on " +
+        res.info.videoWidth +
+        "x" +
+        res.info.videoHeight +
+        " facing=" +
+        res.info.facingMode +
+        " (" +
+        res.info.request +
+        ")",
+    );
+    const front =
+      res.info.facingMode === "user" || (facing === "user" && res.info.facingMode === "unknown");
+    if (this.els.box) this.els.box.classList.toggle("mirror", front);
     this.trackingFailed = false;
-    this.setStatus('Loading body tracking…');
+    this.setStatus("Loading body tracking…");
     try {
       await loadMoveNet();
     } catch (e) {
       if (token !== this.token) return false;
       this.trackingFailed = true;
-      this.setStatus('Body tracking couldn’t load. Check your connection, then try again.', 'error', true);
-      this.debug.note('model error ' + e.message);
+      this.setStatus(
+        "Body tracking couldn’t load. Check your connection, then try again.",
+        "error",
+        true,
+      );
+      this.debug.note("model error " + e.message);
       return false;
     }
     if (token !== this.token) return false;
@@ -83,8 +107,12 @@ export class Preview {
       this.debug.onPoses(poses);
       if (this.onPoses) this.onPoses(poses, tGrab, this.video);
     });
-    const wrongCamera = isMobileDevice() && facing === 'environment' && res.info.facingMode === 'user';
-    this.setStatus(wrongCamera ? 'No rear camera was available, so the front camera is in use.' : '', wrongCamera ? 'warn' : '');
+    const wrongCamera =
+      isMobileDevice() && facing === "environment" && res.info.facingMode === "user";
+    this.setStatus(
+      wrongCamera ? "No rear camera was available, so the front camera is in use." : "",
+      wrongCamera ? "warn" : "",
+    );
     return true;
   }
 
@@ -98,13 +126,17 @@ export class Preview {
     stopPoseLoop();
     stopCamera(this.video);
     this.overlay.clear();
-    this.setStatus('');
-    this.debug.note('camera off');
+    this.setStatus("");
+    this.debug.note("camera off");
   }
 
   /** Camera details for clip metadata. */
   cameraMeta() {
     const i = this.info || {};
-    return { facing: i.facingMode && i.facingMode !== 'unknown' ? i.facingMode : this.facing, label: i.label || '', requested: this.facing };
+    return {
+      facing: i.facingMode && i.facingMode !== "unknown" ? i.facingMode : this.facing,
+      label: i.label || "",
+      requested: this.facing,
+    };
   }
 }

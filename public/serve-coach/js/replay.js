@@ -15,24 +15,29 @@
  * stored unmirrored.
  */
 
-import * as store from './store.js';
-import { SkeletonOverlay } from './overlay.js';
-import { estimateFrame } from './pose.js';
-import { tripodName, orientationName } from './labels.js';
-import { saveVideo, clipFilename } from './save-video.js';
-import { resolveServingArm } from './contact-analysis.js';
+import * as store from "./store.js";
+import { SkeletonOverlay } from "./overlay.js";
+import { estimateFrame } from "./pose.js";
+import { tripodName, orientationName } from "./labels.js";
+import { saveVideo, clipFilename } from "./save-video.js";
+import { resolveServingArm } from "./contact-analysis.js";
 
-import { buildClipAnalysis } from './practice-data.js';
-import { detectServePhases } from './serve-phases.js';
-import { selectSwing, drawSwingArc } from './swing-arc.js';
+import { buildClipAnalysis } from "./practice-data.js";
+import { detectServePhases } from "./serve-phases.js";
+import { selectSwing, drawSwingArc } from "./swing-arc.js";
 
 const $ = (id) => document.getElementById(id);
-const fmtTime = (s) => { s = Math.max(0, Math.floor(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
-const fmtMB = (b) => (b / 1e6 >= 10 ? Math.round(b / 1e6) : (b / 1e6).toFixed(1)) + ' MB';
-const sideName = (s) => (s === 'ad' ? 'Ad' : s === 'deuce' ? 'Deuce' : '–');
-const camName = (c) => (c && c.facing === 'user' ? 'Front' : 'Rear');
+const fmtTime = (s) => {
+  s = Math.max(0, Math.floor(s));
+  return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+};
+const fmtMB = (b) => (b / 1e6 >= 10 ? Math.round(b / 1e6) : (b / 1e6).toFixed(1)) + " MB";
+const sideName = (s) => (s === "ad" ? "Ad" : s === "deuce" ? "Deuce" : "–");
+const camName = (c) => (c && c.facing === "user" ? "Front" : "Rear");
 
-const SEARCH_MS = 1500, STEP_MS = 20, SAMPLES = 10;
+const SEARCH_MS = 1500,
+  STEP_MS = 20,
+  SAMPLES = 10;
 
 /** Fallback offsets measured in WP0, by browser. */
 export function defaultOffsetMs() {
@@ -47,24 +52,49 @@ export function defaultOffsetMs() {
 function waitFor(el, ev, ms = 6000) {
   return new Promise((resolve) => {
     let done = false;
-    const t = setTimeout(() => { if (!done) { done = true; resolve(false); } }, ms);
-    el.addEventListener(ev, () => { if (!done) { done = true; clearTimeout(t); resolve(true); } }, { once: true });
+    const t = setTimeout(() => {
+      if (!done) {
+        done = true;
+        resolve(false);
+      }
+    }, ms);
+    el.addEventListener(
+      ev,
+      () => {
+        if (!done) {
+          done = true;
+          clearTimeout(t);
+          resolve(true);
+        }
+      },
+      { once: true },
+    );
   });
 }
 
 export function initReplay({ onDeleted } = {}) {
-  const styles = document.createElement('link');
-  styles.rel = 'stylesheet';
-  styles.href = new URL('../replay-analysis.css', import.meta.url).href;
+  const styles = document.createElement("link");
+  styles.rel = "stylesheet";
+  styles.href = new URL("../replay-analysis.css", import.meta.url).href;
   document.head.appendChild(styles);
-  const video = $('rpVideo');
-  const overlay = new SkeletonOverlay($('rpCanvas'), video);
-  let clip = null, frames = [], url = null, offsetMs = 0, clipBlob = null;
-  let skeletonOn = true, mirrorOn = false, calibrating = false, syncId = 0, openToken = 0;
-  let wantedId = null, selectedArm = null, wantedPoseMs = null;
+  const video = $("rpVideo");
+  const overlay = new SkeletonOverlay($("rpCanvas"), video);
+  let clip = null,
+    frames = [],
+    url = null,
+    offsetMs = 0,
+    clipBlob = null;
+  let skeletonOn = true,
+    mirrorOn = false,
+    calibrating = false,
+    syncId = 0,
+    openToken = 0;
+  let wantedId = null,
+    selectedArm = null,
+    wantedPoseMs = null;
 
-  const movement = document.createElement('section');
-  movement.className = 'block';
+  const movement = document.createElement("section");
+  movement.className = "block";
   movement.innerHTML = `<h2 class="sec-h">Movement in replay</h2>
     <div class="rp-toggles">
       <button class="rp-tog" id="rpAngles" type="button" aria-pressed="false" disabled>2D angles</button>
@@ -76,24 +106,36 @@ export function initReplay({ onDeleted } = {}) {
     <button class="btn btn-quiet" id="rpSpeedPeak" type="button" disabled>Jump to peak wrist movement</button>
     <button class="btn btn-quiet" id="rpContact" type="button" disabled>Jump to estimated overhead reach</button>
     <p class="rec-label">Angles and wrist speeds describe the camera image. Framing and perspective affect them. Wrist speed is shown in percent of image diagonal per second.</p>`;
-  $('rpInfo').before(movement);
-  let analysis = null, anglesOn = false, swing = null;
-  const measurement = $('rpMeasurements');
-  $('rpBox').append(measurement);
-  measurement.classList.add('rp-measurements');
+  $("rpInfo").before(movement);
+  let analysis = null,
+    anglesOn = false,
+    swing = null;
+  const measurement = $("rpMeasurements");
+  $("rpBox").append(measurement);
+  measurement.classList.add("rp-measurements");
 
   function paintSpeed() {
     analysis = buildClipAnalysis(clip, frames, { arm: selectedArm, offsetMs });
     const wrist = analysis.metrics.wrist;
-    const phases = detectServePhases(frames, { ...clip, dominantHand: selectedArm, servingArm: selectedArm }, offsetMs);
-    swing = selectSwing(wrist, phases.trophy?.poseTimestampMs, analysis.metrics.contact?.poseTimestampMs, phases.finish?.poseTimestampMs);
+    const phases = detectServePhases(
+      frames,
+      { ...clip, dominantHand: selectedArm, servingArm: selectedArm },
+      offsetMs,
+    );
+    swing = selectSwing(
+      wrist,
+      phases.trophy?.poseTimestampMs,
+      analysis.metrics.contact?.poseTimestampMs,
+      phases.finish?.poseTimestampMs,
+    );
     arcStatus();
     const angle = analysis.metrics.contact?.elbowAngleDegrees;
-    $('rpContact').textContent = Number.isFinite(angle)
-      ? `Jump to estimated overhead reach · ${angle.toFixed(0)}° elbow angle` : 'Jump to estimated overhead reach';
-    $('rpWrist').textContent = wrist
+    $("rpContact").textContent = Number.isFinite(angle)
+      ? `Jump to estimated overhead reach · ${angle.toFixed(0)}° elbow angle`
+      : "Jump to estimated overhead reach";
+    $("rpWrist").textContent = wrist
       ? `Tracked wrist speed · Peak ${wrist.peak.speed.toFixed(1)}%/s · Average ${wrist.average.toFixed(1)}%/s over ${wrist.trackedSeconds.toFixed(1)} tracked seconds.`
-      : 'Wrist speed unavailable. A serving hand and continuous wrist tracking are needed.';
+      : "Wrist speed unavailable. A serving hand and continuous wrist tracking are needed.";
   }
   function jumpTo(poseMs) {
     if (calibrating || !Number.isFinite(poseMs)) return;
@@ -101,223 +143,375 @@ export function initReplay({ onDeleted } = {}) {
     video.currentTime = Math.max(0, Math.min(duration(), (poseMs - offsetMs) / 1000));
     redraw();
   }
-  $('rpSpeedPeak').addEventListener('click', () => jumpTo(analysis?.metrics.wrist?.peak.t));
-  $('rpContact').addEventListener('click', () => jumpTo(analysis?.metrics.contact?.poseTimestampMs));
-  $('rpAngles').addEventListener('click', () => {
+  $("rpSpeedPeak").addEventListener("click", () => jumpTo(analysis?.metrics.wrist?.peak.t));
+  $("rpContact").addEventListener("click", () =>
+    jumpTo(analysis?.metrics.contact?.poseTimestampMs),
+  );
+  $("rpAngles").addEventListener("click", () => {
     anglesOn = !anglesOn;
-    $('rpAngles').setAttribute('aria-pressed', String(anglesOn));
+    $("rpAngles").setAttribute("aria-pressed", String(anglesOn));
     redraw();
   });
   function arcStatus() {
-    const mode = $('rpTrajectory').value;
-    $('rpArcStatus').textContent = mode === 'full' && !swing
-      ? 'Full swing needs continuous tracking from preparation through the finish.'
-      : mode === 'full' ? 'Diamond: highest wrist point. Circle: fastest tracked wrist movement.' : '';
+    const mode = $("rpTrajectory").value;
+    $("rpArcStatus").textContent =
+      mode === "full" && !swing
+        ? "Full swing needs continuous tracking from preparation through the finish."
+        : mode === "full"
+          ? "Diamond: highest wrist point. Circle: fastest tracked wrist movement."
+          : "";
   }
-  $('rpTrajectory').addEventListener('change', () => { arcStatus(); redraw(); });
+  $("rpTrajectory").addEventListener("change", () => {
+    arcStatus();
+    redraw();
+  });
 
   /* ---------- pose lookup and drawing ---------- */
   function poseAt(tMs, maxGap = 250, source = frames) {
     if (!source.length) return null;
-    let lo = 0, hi = source.length - 1;
-    while (lo < hi) { const mid = (lo + hi) >> 1; if (source[mid].t < tMs) lo = mid + 1; else hi = mid; }
+    let lo = 0,
+      hi = source.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (source[mid].t < tMs) lo = mid + 1;
+      else hi = mid;
+    }
     let best = source[lo];
     if (lo > 0 && Math.abs(source[lo - 1].t - tMs) < Math.abs(best.t - tMs)) best = source[lo - 1];
     return Math.abs(best.t - tMs) <= maxGap ? best : null;
   }
   function toVideoPx(kp) {
-    const vw = video.videoWidth, vh = video.videoHeight, out = [];
-    for (let i = 0; i < 17; i++) out.push({ x: kp[i * 3] * vw, y: kp[i * 3 + 1] * vh, score: kp[i * 3 + 2] });
+    const vw = video.videoWidth,
+      vh = video.videoHeight,
+      out = [];
+    for (let i = 0; i < 17; i++)
+      out.push({ x: kp[i * 3] * vw, y: kp[i * 3 + 1] * vh, score: kp[i * 3 + 2] });
     return out;
   }
   function drawAt(tMs) {
-    if (calibrating || !video.videoWidth) { overlay.clear(); return; }
+    if (calibrating || !video.videoWidth) {
+      overlay.clear();
+      return;
+    }
     const poseMs = tMs + offsetMs;
     const f = poseAt(poseMs);
     overlay.draw(skeletonOn && f?.kp ? toVideoPx(f.kp) : null);
     const m = anglesOn && poseAt(poseMs, 110, analysis?.frames || []);
     const jointAngles = m?.smoothedJointAngles;
-    const values = [jointAngles?.leftKnee, jointAngles?.rightKnee,
-      jointAngles?.leftElbow, jointAngles?.rightElbow, m?.shoulderTilt, m?.bodyLean];
-    const labels = ['L knee', 'R knee', 'L elbow', 'R elbow', 'Shoulder tilt', 'Body lean'];
+    const values = [
+      jointAngles?.leftKnee,
+      jointAngles?.rightKnee,
+      jointAngles?.leftElbow,
+      jointAngles?.rightElbow,
+      m?.shoulderTilt,
+      m?.bodyLean,
+    ];
+    const labels = ["L knee", "R knee", "L elbow", "R elbow", "Shoulder tilt", "Body lean"];
     measurement.hidden = !anglesOn;
-    const reading = values.flatMap((v, i) => Number.isFinite(v) ? [`${labels[i]} ${v.toFixed(0)}°`] : []).join(' · ');
-    const display = reading || '2D angles unavailable here';
+    const reading = values
+      .flatMap((v, i) => (Number.isFinite(v) ? [`${labels[i]} ${v.toFixed(0)}°`] : []))
+      .join(" · ");
+    const display = reading || "2D angles unavailable here";
     if (anglesOn && measurement.textContent !== display) measurement.textContent = display;
-    const wrist = analysis?.metrics.wrist, mode = $('rpTrajectory').value;
-    if (mode === 'trail' && wrist) {
-      const samples = wrist.trajectory.filter(p => p.t >= poseMs - 300 && p.t <= poseMs);
+    const wrist = analysis?.metrics.wrist,
+      mode = $("rpTrajectory").value;
+    if (mode === "trail" && wrist) {
+      const samples = wrist.trajectory.filter((p) => p.t >= poseMs - 300 && p.t <= poseMs);
       drawSwingArc(overlay, samples, { poseMs, peak: wrist.peak, trailing: true });
-    } else if (mode === 'full' && swing) {
+    } else if (mode === "full" && swing) {
       drawSwingArc(overlay, swing.samples, { poseMs, peak: swing.peak, apex: swing.apex });
     }
   }
   function startSync() {
     const id = ++syncId;
-    if ('requestVideoFrameCallback' in HTMLVideoElement.prototype) {
-      const cb = (now, md) => { if (id !== syncId) return; drawAt(md.mediaTime * 1000); updateTime(); video.requestVideoFrameCallback(cb); };
+    if ("requestVideoFrameCallback" in HTMLVideoElement.prototype) {
+      const cb = (now, md) => {
+        if (id !== syncId) return;
+        drawAt(md.mediaTime * 1000);
+        updateTime();
+        video.requestVideoFrameCallback(cb);
+      };
       video.requestVideoFrameCallback(cb);
     } else {
-      const loop = () => { if (id !== syncId) return; drawAt(video.currentTime * 1000); updateTime(); requestAnimationFrame(loop); };
+      const loop = () => {
+        if (id !== syncId) return;
+        drawAt(video.currentTime * 1000);
+        updateTime();
+        requestAnimationFrame(loop);
+      };
       requestAnimationFrame(loop);
     }
   }
-  const redraw = () => { drawAt(video.currentTime * 1000); updateTime(); };
-  video.addEventListener('seeked', redraw);
-  video.addEventListener('pause', () => { redraw(); $('rpPlay').textContent = 'Play'; });
-  video.addEventListener('play', () => { $('rpPlay').textContent = 'Pause'; });
-  video.addEventListener('ended', () => { $('rpPlay').textContent = 'Play'; });
+  const redraw = () => {
+    drawAt(video.currentTime * 1000);
+    updateTime();
+  };
+  video.addEventListener("seeked", redraw);
+  video.addEventListener("pause", () => {
+    redraw();
+    $("rpPlay").textContent = "Play";
+  });
+  video.addEventListener("play", () => {
+    $("rpPlay").textContent = "Pause";
+  });
+  video.addEventListener("ended", () => {
+    $("rpPlay").textContent = "Play";
+  });
 
   /* ---------- time and seek ---------- */
-  const duration = () => (Number.isFinite(video.duration) && video.duration > 0 ? video.duration : ((clip && clip.video && clip.video.durationMs) || 0) / 1000);
+  const duration = () =>
+    Number.isFinite(video.duration) && video.duration > 0
+      ? video.duration
+      : ((clip && clip.video && clip.video.durationMs) || 0) / 1000;
   let dragging = false;
   function updateTime() {
     const d = duration();
-    $('rpTime').textContent = `${fmtTime(video.currentTime)} / ${fmtTime(d)}`;
-    if (!dragging && d) $('rpSeek').value = String(Math.round((video.currentTime / d) * 1000));
+    $("rpTime").textContent = `${fmtTime(video.currentTime)} / ${fmtTime(d)}`;
+    if (!dragging && d) $("rpSeek").value = String(Math.round((video.currentTime / d) * 1000));
   }
-  $('rpSeek').addEventListener('input', () => { dragging = true; const d = duration(); if (d) video.currentTime = (+$('rpSeek').value / 1000) * d; });
-  $('rpSeek').addEventListener('change', () => { dragging = false; });
-  $('rpPlay').addEventListener('click', () => {
-    if (calibrating) return;
-    if (video.paused) { if (video.ended) video.currentTime = 0; video.play().catch(() => {}); } else video.pause();
+  $("rpSeek").addEventListener("input", () => {
+    dragging = true;
+    const d = duration();
+    if (d) video.currentTime = (+$("rpSeek").value / 1000) * d;
   });
-  document.querySelectorAll('[data-rpstep]').forEach((b) => b.addEventListener('click', () => {
-    video.pause();
-    video.currentTime = Math.min(duration(), Math.max(0, video.currentTime + (+b.dataset.rpstep)));
-  }));
-  document.querySelectorAll('[data-rprate]').forEach((b) => b.addEventListener('click', () => {
-    setRate(+b.dataset.rprate);
-    document.querySelectorAll('[data-rprate]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
-  }));
+  $("rpSeek").addEventListener("change", () => {
+    dragging = false;
+  });
+  $("rpPlay").addEventListener("click", () => {
+    if (calibrating) return;
+    if (video.paused) {
+      if (video.ended) video.currentTime = 0;
+      video.play().catch(() => {});
+    } else video.pause();
+  });
+  document.querySelectorAll("[data-rpstep]").forEach((b) =>
+    b.addEventListener("click", () => {
+      video.pause();
+      video.currentTime = Math.min(duration(), Math.max(0, video.currentTime + +b.dataset.rpstep));
+    }),
+  );
+  document.querySelectorAll("[data-rprate]").forEach((b) =>
+    b.addEventListener("click", () => {
+      setRate(+b.dataset.rprate);
+      document
+        .querySelectorAll("[data-rprate]")
+        .forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    }),
+  );
   // Keep the chosen speed across pause, replay-from-end and any media reload (browsers reset to defaultPlaybackRate on load).
   let rate = 1;
-  function setRate(r) { rate = r; video.defaultPlaybackRate = r; video.playbackRate = r; }
-  video.addEventListener('loadeddata', () => { if (video.playbackRate !== rate) video.playbackRate = rate; });
-  video.addEventListener('play', () => { if (video.playbackRate !== rate) video.playbackRate = rate; });
-  $('rpSkel').addEventListener('click', () => {
+  function setRate(r) {
+    rate = r;
+    video.defaultPlaybackRate = r;
+    video.playbackRate = r;
+  }
+  video.addEventListener("loadeddata", () => {
+    if (video.playbackRate !== rate) video.playbackRate = rate;
+  });
+  video.addEventListener("play", () => {
+    if (video.playbackRate !== rate) video.playbackRate = rate;
+  });
+  $("rpSkel").addEventListener("click", () => {
     skeletonOn = !skeletonOn;
-    $('rpSkel').setAttribute('aria-pressed', String(skeletonOn));
+    $("rpSkel").setAttribute("aria-pressed", String(skeletonOn));
     redraw();
   });
-  $('rpMirror').addEventListener('click', () => {
+  $("rpMirror").addEventListener("click", () => {
     mirrorOn = !mirrorOn;
-    $('rpMirror').setAttribute('aria-pressed', String(mirrorOn));
-    $('rpBox').classList.toggle('mirror', mirrorOn);
+    $("rpMirror").setAttribute("aria-pressed", String(mirrorOn));
+    $("rpBox").classList.toggle("mirror", mirrorOn);
   });
 
   /* ---------- sync calibration (first replay of a clip) ---------- */
   async function calibrate(token) {
-    const good = frames.filter((x) => x.kp && x.kp.filter((v, i) => i % 3 === 2 && v >= 0.4).length >= 10);
-    if (good.length < 15) return { offsetMs: defaultOffsetMs(), method: 'default', reason: 'not enough tracked movement' };
+    const good = frames.filter(
+      (x) => x.kp && x.kp.filter((v, i) => i % 3 === 2 && v >= 0.4).length >= 10,
+    );
+    if (good.length < 15)
+      return {
+        offsetMs: defaultOffsetMs(),
+        method: "default",
+        reason: "not enough tracked movement",
+      };
     const samples = [];
-    for (let i = 1; i <= SAMPLES; i++) samples.push(good[Math.floor((i * good.length) / (SAMPLES + 1))].t);
-    const offsets = []; for (let o = -SEARCH_MS; o <= SEARCH_MS; o += STEP_MS) offsets.push(o);
-    const err = new Array(offsets.length).fill(0), cnt = new Array(offsets.length).fill(0);
+    for (let i = 1; i <= SAMPLES; i++)
+      samples.push(good[Math.floor((i * good.length) / (SAMPLES + 1))].t);
+    const offsets = [];
+    for (let o = -SEARCH_MS; o <= SEARCH_MS; o += STEP_MS) offsets.push(o);
+    const err = new Array(offsets.length).fill(0),
+      cnt = new Array(offsets.length).fill(0);
     let used = 0;
     for (const [n, t] of samples.entries()) {
       if (token !== openToken) return null;
-      $('rpStatus').textContent = `Aligning skeleton with the video… ${Math.round((n / samples.length) * 100)}%`;
+      $("rpStatus").textContent =
+        `Aligning skeleton with the video… ${Math.round((n / samples.length) * 100)}%`;
       video.currentTime = t / 1000;
-      await waitFor(video, 'seeked');
+      await waitFor(video, "seeked");
       await new Promise((r) => setTimeout(r, 100));
       const p = await estimateFrame(video);
       if (!p) continue;
       used++;
-      const vw = video.videoWidth, vh = video.videoHeight;
+      const vw = video.videoWidth,
+        vh = video.videoHeight;
       offsets.forEach((o, j) => {
         const s = poseAt(t + o, 60);
         if (!s || !s.kp) return;
-        let e = 0, k = 0;
+        let e = 0,
+          k = 0;
         for (let i = 0; i < 17; i++) {
           if (p.keypoints[i].score < 0.4 || s.kp[i * 3 + 2] < 0.4) continue;
-          e += Math.hypot(p.keypoints[i].x / vw - s.kp[i * 3], p.keypoints[i].y / vh - s.kp[i * 3 + 1]); k++;
+          e += Math.hypot(
+            p.keypoints[i].x / vw - s.kp[i * 3],
+            p.keypoints[i].y / vh - s.kp[i * 3 + 1],
+          );
+          k++;
         }
-        if (k >= 6) { err[j] += e / k; cnt[j]++; }
+        if (k >= 6) {
+          err[j] += e / k;
+          cnt[j]++;
+        }
       });
     }
     const mean = err.map((e, j) => (cnt[j] >= 3 ? e / cnt[j] : Infinity));
-    let best = 0; mean.forEach((m, j) => { if (m < mean[best]) best = j; });
+    let best = 0;
+    mean.forEach((m, j) => {
+      if (m < mean[best]) best = j;
+    });
     const zero = offsets.indexOf(0);
     if (!Number.isFinite(mean[best]) || Math.abs(offsets[best]) >= SEARCH_MS) {
-      return { offsetMs: defaultOffsetMs(), method: 'default', reason: 'measurement unclear', samples: used };
+      return {
+        offsetMs: defaultOffsetMs(),
+        method: "default",
+        reason: "measurement unclear",
+        samples: used,
+      };
     }
     return {
-      offsetMs: offsets[best], method: 'measured', samples: used,
-      errorAtBest: +mean[best].toFixed(4), errorAtZero: Number.isFinite(mean[zero]) ? +mean[zero].toFixed(4) : null,
+      offsetMs: offsets[best],
+      method: "measured",
+      samples: used,
+      errorAtBest: +mean[best].toFixed(4),
+      errorAtZero: Number.isFinite(mean[zero]) ? +mean[zero].toFixed(4) : null,
     };
   }
 
   /* ---------- save / download (original file, no re-encoding) ---------- */
   let saveTimer = null;
-  function setSave(state, msg = '', kind = '') {
-    const b = $('rpSave'); if (!b) return;
+  function setSave(state, msg = "", kind = "") {
+    const b = $("rpSave");
+    if (!b) return;
     clearTimeout(saveTimer);
-    b.disabled = state === 'idle' || state === 'busy';
-    b.setAttribute('aria-busy', String(state === 'busy'));
-    $('rpSaveL').textContent = state === 'busy' ? 'Preparing video…' : 'Save video';
-    $('rpSaveMsg').textContent = msg; $('rpSaveMsg').dataset.kind = kind;
-    if (state === 'done' || state === 'note') saveTimer = setTimeout(() => setSave(clipBlob ? 'ready' : 'idle'), 5000);
+    b.disabled = state === "idle" || state === "busy";
+    b.setAttribute("aria-busy", String(state === "busy"));
+    $("rpSaveL").textContent = state === "busy" ? "Preparing video…" : "Save video";
+    $("rpSaveMsg").textContent = msg;
+    $("rpSaveMsg").dataset.kind = kind;
+    if (state === "done" || state === "note")
+      saveTimer = setTimeout(() => setSave(clipBlob ? "ready" : "idle"), 5000);
   }
-  $('rpSave').addEventListener('click', () => {
+  $("rpSave").addEventListener("click", () => {
     if (!clipBlob || !clip) return;
-    const name = clipFilename(new Date(clip.createdAt), clipBlob.type || (clip.video && clip.video.mime));
+    const name = clipFilename(
+      new Date(clip.createdAt),
+      clipBlob.type || (clip.video && clip.video.mime),
+    );
     const token = openToken;
-    setSave('busy');
-    saveVideo(clipBlob, name).then((r) => {
-      if (token !== openToken) return;
-      if (r === 'cancelled') setSave('note', 'Not saved. Tap Save video to try again.');
-      else if (r === 'shared') setSave('done', 'Video handed to the share sheet. Check the destination you selected.', 'ok');
-      else setSave('done', `Downloading ${name}`, 'ok');
-    }).catch(() => {
-      if (token === openToken) setSave('ready', 'Couldn’t save this video. Please try again.', 'error');
-    });
+    setSave("busy");
+    saveVideo(clipBlob, name)
+      .then((r) => {
+        if (token !== openToken) return;
+        if (r === "cancelled") setSave("note", "Not saved. Tap Save video to try again.");
+        else if (r === "shared")
+          setSave(
+            "done",
+            "Video handed to the share sheet. Check the destination you selected.",
+            "ok",
+          );
+        else setSave("done", `Downloading ${name}`, "ok");
+      })
+      .catch(() => {
+        if (token === openToken)
+          setSave("ready", "Couldn’t save this video. Please try again.", "error");
+      });
   });
 
   /* ---------- open / close ---------- */
   function setControls(on) {
-    ['rpPlay', 'rpSeek', 'rpSkel', 'rpMirror', 'rpDelete'].forEach((id) => { $(id).disabled = !on; });
-    $('rpSpeedPeak').disabled = !on || !analysis?.metrics.wrist;
-    $('rpContact').disabled = !on || !analysis?.metrics.contact;
-    $('rpAngles').disabled = !on;
-    $('rpTrajectory').disabled = !on || !analysis?.metrics.wrist;
-    document.querySelectorAll('[data-rprate],[data-rpstep]').forEach((b) => { b.disabled = !on; });
+    ["rpPlay", "rpSeek", "rpSkel", "rpMirror", "rpDelete"].forEach((id) => {
+      $(id).disabled = !on;
+    });
+    $("rpSpeedPeak").disabled = !on || !analysis?.metrics.wrist;
+    $("rpContact").disabled = !on || !analysis?.metrics.contact;
+    $("rpAngles").disabled = !on;
+    $("rpTrajectory").disabled = !on || !analysis?.metrics.wrist;
+    document.querySelectorAll("[data-rprate],[data-rpstep]").forEach((b) => {
+      b.disabled = !on;
+    });
   }
 
   function info(c) {
-    const dl = $('rpInfo');
-    dl.innerHTML = '';
-    const sync = c.sync && c.sync.offsetMs != null
-      ? (c.sync.method === 'measured' ? `Aligned (${c.sync.offsetMs} ms)` : `Standard alignment (${c.sync.offsetMs} ms)`)
-      : 'Not aligned yet';
+    const dl = $("rpInfo");
+    dl.innerHTML = "";
+    const sync =
+      c.sync && c.sync.offsetMs != null
+        ? c.sync.method === "measured"
+          ? `Aligned (${c.sync.offsetMs} ms)`
+          : `Standard alignment (${c.sync.offsetMs} ms)`
+        : "Not aligned yet";
     const rows = [
-      ['Recorded', new Date(c.createdAt).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })],
-      ['Serving side', sideName(c.side)],
-      ['Tripod position', tripodName(c.tripodPosition)],
-      ['Phone camera', camName(c.camera)],
-      ['Orientation', orientationName(c.video && c.video.orientation)],
-      ['Length', fmtTime(Math.round(((c.video && c.video.durationMs) || 0) / 1000))],
-      ['Size', fmtMB((c.video && c.video.bytes) || 0) + ` · ${(c.video && c.video.width) || '?'}×${(c.video && c.video.height) || '?'}`],
-      ['Movement', `${(c.poses && c.poses.frames) || frames.length} frames${c.poses && c.poses.fps ? ` · ${c.poses.fps} per second` : ''}`],
-      ['Skeleton sync', sync],
+      [
+        "Recorded",
+        new Date(c.createdAt).toLocaleString([], {
+          weekday: "short",
+          day: "numeric",
+          month: "short",
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      ],
+      ["Serving side", sideName(c.side)],
+      ["Tripod position", tripodName(c.tripodPosition)],
+      ["Phone camera", camName(c.camera)],
+      ["Orientation", orientationName(c.video && c.video.orientation)],
+      ["Length", fmtTime(Math.round(((c.video && c.video.durationMs) || 0) / 1000))],
+      [
+        "Size",
+        fmtMB((c.video && c.video.bytes) || 0) +
+          ` · ${(c.video && c.video.width) || "?"}×${(c.video && c.video.height) || "?"}`,
+      ],
+      [
+        "Movement",
+        `${(c.poses && c.poses.frames) || frames.length} frames${c.poses && c.poses.fps ? ` · ${c.poses.fps} per second` : ""}`,
+      ],
+      ["Skeleton sync", sync],
     ];
-    if (c.status && c.status.startsWith('interrupted')) rows.push(['Note', 'Interrupted: ' + (c.stopReason || 'saved up to the interruption')]);
-    rows.forEach(([k, v]) => { const dt = document.createElement('dt'); dt.textContent = k; const dd = document.createElement('dd'); dd.textContent = v; dl.append(dt, dd); });
+    if (c.status && c.status.startsWith("interrupted"))
+      rows.push(["Note", "Interrupted: " + (c.stopReason || "saved up to the interruption")]);
+    rows.forEach(([k, v]) => {
+      const dt = document.createElement("dt");
+      dt.textContent = k;
+      const dd = document.createElement("dd");
+      dd.textContent = v;
+      dl.append(dt, dd);
+    });
   }
 
   function release() {
     syncId++;
     video.pause();
-    video.removeAttribute('src'); video.load();
+    video.removeAttribute("src");
+    video.load();
     if (url) URL.revokeObjectURL(url);
-    url = null; overlay.clear();
-    clipBlob = null; setSave('idle');
+    url = null;
+    overlay.clear();
+    clipBlob = null;
+    setSave("idle");
     analysis = null;
     swing = null;
-    $('rpArcStatus').textContent = '';
+    $("rpArcStatus").textContent = "";
     selectedArm = null;
     measurement.hidden = true;
-    $('rpWrist').textContent = '';
+    $("rpWrist").textContent = "";
   }
 
   async function enter() {
@@ -325,41 +519,69 @@ export function initReplay({ onDeleted } = {}) {
     release();
     calibrating = false;
     setControls(false);
-    $('rpStatus').textContent = 'Loading clip…';
-    $('rpStatus').dataset.kind = '';
+    $("rpStatus").textContent = "Loading clip…";
+    $("rpStatus").dataset.kind = "";
     clip = wantedId ? await store.getClip(wantedId) : null;
     if (token !== openToken) return;
-    if (!clip) { location.hash = '#progress'; return; }
+    if (!clip) {
+      location.hash = "#progress";
+      return;
+    }
     const session = await store.getSession(clip.sessionId);
     if (token !== openToken) return;
     selectedArm = resolveServingArm(clip, session, store.prefs.get(store.KEYS.profile));
-    $('rpTitle').textContent = clip.source === 'upload' ? `Uploaded video${clip.fileName ? ' · ' + clip.fileName : ''}` : `Clip ${clip.seq} · ${sideName(clip.side)} · Tripod ${tripodName(clip.tripodPosition)}`;
-    const [{ blob }, f] = await Promise.all([store.getClipVideo(clip), store.getClipPoses(clip.id)]);
+    $("rpTitle").textContent =
+      clip.source === "upload"
+        ? `Uploaded video${clip.fileName ? " · " + clip.fileName : ""}`
+        : `Clip ${clip.seq} · ${sideName(clip.side)} · Tripod ${tripodName(clip.tripodPosition)}`;
+    const [{ blob }, f] = await Promise.all([
+      store.getClipVideo(clip),
+      store.getClipPoses(clip.id),
+    ]);
     if (token !== openToken) return;
     frames = f;
     offsetMs = clip.sync && clip.sync.offsetMs != null ? clip.sync.offsetMs : defaultOffsetMs();
     info(clip);
-    if (!blob.size) { $('rpStatus').textContent = 'No video was saved for this clip (it was interrupted before any video was written).'; $('rpDelete').disabled = false; return; }
-    clipBlob = blob; setSave('ready');
+    if (!blob.size) {
+      $("rpStatus").textContent =
+        "No video was saved for this clip (it was interrupted before any video was written).";
+      $("rpDelete").disabled = false;
+      return;
+    }
+    clipBlob = blob;
+    setSave("ready");
     url = URL.createObjectURL(blob);
     video.src = url;
     setRate(1);
-    document.querySelectorAll('[data-rprate]').forEach((x) => x.setAttribute('aria-pressed', String(x.dataset.rprate === '1')));
+    document
+      .querySelectorAll("[data-rprate]")
+      .forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.rprate === "1")));
     // Mirror defaults to how the player saw themselves while recording (front camera).
-    mirrorOn = !!(clip.camera && clip.camera.facing === 'user');
-    $('rpMirror').setAttribute('aria-pressed', String(mirrorOn));
-    $('rpBox').classList.toggle('mirror', mirrorOn);
-    const ok = await waitFor(video, 'loadedmetadata', 8000);
+    mirrorOn = !!(clip.camera && clip.camera.facing === "user");
+    $("rpMirror").setAttribute("aria-pressed", String(mirrorOn));
+    $("rpBox").classList.toggle("mirror", mirrorOn);
+    const ok = await waitFor(video, "loadedmetadata", 8000);
     if (token !== openToken) return;
-    if (!ok) { $('rpStatus').textContent = 'This video couldn’t be opened on this browser.'; $('rpStatus').dataset.kind = 'error'; $('rpDelete').disabled = false; return; }
+    if (!ok) {
+      $("rpStatus").textContent = "This video couldn’t be opened on this browser.";
+      $("rpStatus").dataset.kind = "error";
+      $("rpDelete").disabled = false;
+      return;
+    }
 
     offsetMs = clip.sync && clip.sync.offsetMs != null ? clip.sync.offsetMs : defaultOffsetMs();
     if (!frames.length) {
-      $('rpStatus').textContent = 'No movement data was saved for this clip, so there is no skeleton.';
+      $("rpStatus").textContent =
+        "No movement data was saved for this clip, so there is no skeleton.";
     } else if (!clip.sync || clip.sync.offsetMs == null) {
-      calibrating = true; overlay.clear();
+      calibrating = true;
+      overlay.clear();
       let result = null;
-      try { result = await calibrate(token); } catch (e) { result = null; }
+      try {
+        result = await calibrate(token);
+      } catch (e) {
+        result = null;
+      }
       if (token !== openToken) return;
       calibrating = false;
       if (result) {
@@ -368,14 +590,18 @@ export function initReplay({ onDeleted } = {}) {
         await store.updateClip(clip.id, { sync });
         clip = { ...clip, sync };
         info(clip);
-        $('rpStatus').textContent = result.method === 'measured' ? 'Skeleton aligned with the video.' : 'Skeleton shown with standard alignment.';
+        $("rpStatus").textContent =
+          result.method === "measured"
+            ? "Skeleton aligned with the video."
+            : "Skeleton shown with standard alignment.";
       } else {
-        $('rpStatus').textContent = 'Skeleton shown with standard alignment (body tracking unavailable to fine-tune it).';
+        $("rpStatus").textContent =
+          "Skeleton shown with standard alignment (body tracking unavailable to fine-tune it).";
       }
       video.currentTime = 0;
-      await waitFor(video, 'seeked', 3000);
+      await waitFor(video, "seeked", 3000);
     } else {
-      $('rpStatus').textContent = '';
+      $("rpStatus").textContent = "";
     }
     if (token !== openToken) return;
     paintSpeed();
@@ -391,44 +617,58 @@ export function initReplay({ onDeleted } = {}) {
     // Persist the same contact-local estimates shown here after pose/video alignment.
     // Legacy preference fallback remains marked in the analysis, not rewritten into capture data.
     store.finalizeClipData(clip.id, { arm: selectedArm, offsetMs }).catch(() => {
-      if (token === openToken) $('rpStatus').textContent = 'Video is saved, but extra measurements couldn’t be saved. Reopen this clip to retry.';
+      if (token === openToken)
+        $("rpStatus").textContent =
+          "Video is saved, but extra measurements couldn’t be saved. Reopen this clip to retry.";
     });
   }
 
-  function leave() { openToken++; calibrating = false; release(); }
+  function leave() {
+    openToken++;
+    calibrating = false;
+    release();
+  }
 
   /* ---------- delete (two taps, no browser popup) ---------- */
   let armTimer = null;
-  $('rpDelete').addEventListener('click', async () => {
-    const b = $('rpDelete');
-    if (!b.classList.contains('armed')) {
-      b.classList.add('armed'); b.textContent = 'Tap again to delete this clip';
-      armTimer = setTimeout(() => { b.classList.remove('armed'); b.textContent = 'Delete clip'; }, 4000);
+  $("rpDelete").addEventListener("click", async () => {
+    const b = $("rpDelete");
+    if (!b.classList.contains("armed")) {
+      b.classList.add("armed");
+      b.textContent = "Tap again to delete this clip";
+      armTimer = setTimeout(() => {
+        b.classList.remove("armed");
+        b.textContent = "Delete clip";
+      }, 4000);
       return;
     }
-    clearTimeout(armTimer); b.classList.remove('armed'); b.textContent = 'Delete clip';
+    clearTimeout(armTimer);
+    b.classList.remove("armed");
+    b.textContent = "Delete clip";
     if (!clip) return;
     const gone = clip;
     leave();
     await store.deleteClip(gone);
     if (onDeleted) onDeleted(gone);
-    location.hash = document.querySelector('.rp-back').getAttribute('href') || '#progress';
+    location.hash = document.querySelector(".rp-back").getAttribute("href") || "#progress";
   });
 
   return {
-    open(clipId, from = 'progress') {
+    open(clipId, from = "progress") {
       wantedId = clipId;
       wantedPoseMs = null;
-      const back = document.querySelector('.rp-back');
-      back.href = '#' + from;
-      back.textContent = from === 'record' ? '‹ Back to recording' : '‹ Video recordings';
-      if (location.hash === '#replay') enter(); else location.hash = '#replay';
+      const back = document.querySelector(".rp-back");
+      back.href = "#" + from;
+      back.textContent = from === "record" ? "‹ Back to recording" : "‹ Video recordings";
+      if (location.hash === "#replay") enter();
+      else location.hash = "#replay";
     },
     openMoment(clipId, poseTimestampMs) {
       this.open(clipId);
       wantedPoseMs = poseTimestampMs;
     },
     hasClip: () => !!wantedId,
-    enter, leave,
+    enter,
+    leave,
   };
 }

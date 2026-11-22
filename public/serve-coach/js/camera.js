@@ -20,11 +20,13 @@
  */
 
 let stream = null;
-let pending = null;    // an in-flight getUserMedia request, shared by concurrent callers
-let generation = 0;    // bumped by stopCamera so a late-arriving stream is discarded
+let pending = null; // an in-flight getUserMedia request, shared by concurrent callers
+let generation = 0; // bumped by stopCamera so a late-arriving stream is discarded
 
 function isPortraitScreen() {
-  return window.matchMedia ? window.matchMedia('(orientation: portrait)').matches : window.innerHeight >= window.innerWidth;
+  return window.matchMedia
+    ? window.matchMedia("(orientation: portrait)").matches
+    : window.innerHeight >= window.innerWidth;
 }
 
 function size() {
@@ -43,40 +45,46 @@ function attempts(facing) {
 
 /** Phone or tablet (used only to decide whether a front camera needs explaining). */
 export function isMobileDevice() {
-  return (navigator.userAgentData && navigator.userAgentData.mobile) ||
+  return (
+    (navigator.userAgentData && navigator.userAgentData.mobile) ||
     /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
-    (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent)); // iPadOS reports as Mac
+    (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent))
+  ); // iPadOS reports as Mac
 }
 
 const MESSAGES = {
-  NotAllowedError: 'Camera access is blocked. Allow the camera for this site in your browser settings, then try again.',
-  SecurityError: 'Camera access is blocked. Allow the camera for this site in your browser settings, then try again.',
-  NotFoundError: 'No camera was found on this device.',
-  OverconstrainedError: 'This camera can’t provide a suitable picture.',
-  NotReadableError: 'The camera is busy. Close other apps or tabs using the camera, then try again.',
-  AbortError: 'The camera couldn’t start. Try again.',
+  NotAllowedError:
+    "Camera access is blocked. Allow the camera for this site in your browser settings, then try again.",
+  SecurityError:
+    "Camera access is blocked. Allow the camera for this site in your browser settings, then try again.",
+  NotFoundError: "No camera was found on this device.",
+  OverconstrainedError: "This camera can’t provide a suitable picture.",
+  NotReadableError:
+    "The camera is busy. Close other apps or tabs using the camera, then try again.",
+  AbortError: "The camera couldn’t start. Try again.",
 };
 
 export function isCameraActive() {
-  return !!stream && stream.getVideoTracks().some((t) => t.readyState === 'live');
+  return !!stream && stream.getVideoTracks().some((t) => t.readyState === "live");
 }
 
-let lastAttempt = '';
+let lastAttempt = "";
 let lastRequest = null;
 
 async function openStream(facing) {
   const list = attempts(facing);
-  const side = facing === 'user' ? 'front' : 'rear';
+  const side = facing === "user" ? "front" : "rear";
   for (let i = 0; i < list.length; i++) {
     try {
       const s = await navigator.mediaDevices.getUserMedia(list[i]);
-      lastAttempt = [side + ' camera required', side + ' camera preferred', 'any camera'][i];
+      lastAttempt = [side + " camera required", side + " camera preferred", "any camera"][i];
       lastRequest = list[i];
       return s;
     } catch (error) {
       // Only "this camera/setting doesn't exist" moves on to the next attempt.
       // Permission refusals and busy cameras are reported straight away.
-      const retryable = error && (error.name === 'OverconstrainedError' || error.name === 'NotFoundError');
+      const retryable =
+        error && (error.name === "OverconstrainedError" || error.name === "NotFoundError");
       if (!retryable || i === list.length - 1) throw error;
     }
   }
@@ -87,32 +95,40 @@ async function openStream(facing) {
  * Returns { ok: true, info } or { ok: false, code, message }.
  */
 /** facing: 'environment' (rear, default) or 'user' (front). To switch, stopCamera() first. */
-export async function startCamera(videoEl, facing = 'environment') {
+export async function startCamera(videoEl, facing = "environment") {
   if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    return { ok: false, code: 'Insecure', message: 'The camera only works on a secure (https) page in a supported browser.' };
+    return {
+      ok: false,
+      code: "Insecure",
+      message: "The camera only works on a secure (https) page in a supported browser.",
+    };
   }
   try {
     if (!isCameraActive()) {
       const gen = generation;
-      if (!pending) pending = openStream(facing).finally(() => { pending = null; });
+      if (!pending)
+        pending = openStream(facing).finally(() => {
+          pending = null;
+        });
       const s = await pending;
-      if (gen !== generation) {            // stopCamera() was called while we waited
+      if (gen !== generation) {
+        // stopCamera() was called while we waited
         s.getTracks().forEach((t) => t.stop());
-        return { ok: false, code: 'Cancelled', message: '' };
+        return { ok: false, code: "Cancelled", message: "" };
       }
       stream = s;
     }
     const fresh = videoEl.srcObject !== stream;
     if (fresh) videoEl.srcObject = stream;
     videoEl.muted = true;
-    videoEl.setAttribute('playsinline', '');
+    videoEl.setAttribute("playsinline", "");
     await videoEl.play();
     if (fresh) await portraitSafetyNet(videoEl);
     return { ok: true, info: getInfo(videoEl) };
   } catch (error) {
     stopCamera(videoEl);
-    const code = (error && error.name) || 'Error';
-    return { ok: false, code, message: MESSAGES[code] || 'The camera couldn’t start. Try again.' };
+    const code = (error && error.name) || "Error";
+    return { ok: false, code, message: MESSAGES[code] || "The camera couldn’t start. Try again." };
   }
 }
 
@@ -132,12 +148,18 @@ async function portraitSafetyNet(videoEl) {
   stream.getTracks().forEach((t) => t.stop()); // release first: some Android phones can't open twice
   let s;
   try {
-    s = await navigator.mediaDevices.getUserMedia({ audio: false, video: facing ? { facingMode: facing } : true });
-    lastAttempt += ', no size (portrait fallback)';
+    s = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: facing ? { facingMode: facing } : true,
+    });
+    lastAttempt += ", no size (portrait fallback)";
   } catch (e) {
     s = await navigator.mediaDevices.getUserMedia(lastRequest); // reopen the original request
   }
-  if (gen !== generation) { s.getTracks().forEach((t) => t.stop()); return; } // stopped meanwhile
+  if (gen !== generation) {
+    s.getTracks().forEach((t) => t.stop());
+    return;
+  } // stopped meanwhile
   stream = s;
   videoEl.srcObject = s;
   await videoEl.play();
@@ -149,7 +171,11 @@ export function stopCamera(videoEl) {
   if (stream) stream.getTracks().forEach((t) => t.stop());
   stream = null;
   if (videoEl) {
-    try { videoEl.pause(); } catch (e) { /* ignore */ }
+    try {
+      videoEl.pause();
+    } catch (e) {
+      /* ignore */
+    }
     videoEl.srcObject = null;
   }
 }
@@ -160,9 +186,9 @@ export function getInfo(videoEl) {
   const s = track && track.getSettings ? track.getSettings() : {};
   return {
     active: isCameraActive(),
-    label: track ? track.label : '',
+    label: track ? track.label : "",
     request: lastAttempt,
-    facingMode: s.facingMode || 'unknown',  // Safari and Chrome on phones report this; desktops often don't
+    facingMode: s.facingMode || "unknown", // Safari and Chrome on phones report this; desktops often don't
     trackWidth: s.width || 0,
     trackHeight: s.height || 0,
     videoWidth: videoEl ? videoEl.videoWidth : 0,
@@ -178,30 +204,57 @@ export function getInfo(videoEl) {
  * camera's full field of view. Evidence for the "picture is zoomed in" finding, 16 Nov.
  * --------------------------------------------------------------------------------------- */
 export const CAMERA_TEST_VARIANTS = [
-  { id: 'A-portrait-size', note: 'old request (before v1.1.5): portrait size', video: { facingMode: { exact: 'environment' }, width: { ideal: 720 }, height: { ideal: 1280 } } },
-  { id: 'B-landscape-size', note: 'current request (v1.1.5+): sensor-orientation size', video: { facingMode: { exact: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } },
-  { id: 'C-no-size', note: 'no size requested', video: { facingMode: { exact: 'environment' } } },
-  { id: 'D-no-crop', note: 'no size, cropping disabled (Chrome)', video: { facingMode: { exact: 'environment' }, resizeMode: 'none' } },
+  {
+    id: "A-portrait-size",
+    note: "old request (before v1.1.5): portrait size",
+    video: { facingMode: { exact: "environment" }, width: { ideal: 720 }, height: { ideal: 1280 } },
+  },
+  {
+    id: "B-landscape-size",
+    note: "current request (v1.1.5+): sensor-orientation size",
+    video: { facingMode: { exact: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+  },
+  { id: "C-no-size", note: "no size requested", video: { facingMode: { exact: "environment" } } },
+  {
+    id: "D-no-crop",
+    note: "no size, cropping disabled (Chrome)",
+    video: { facingMode: { exact: "environment" }, resizeMode: "none" },
+  },
 ];
 
 export async function probeCamera(variant) {
-  const v = document.createElement('video');
-  v.muted = true; v.setAttribute('playsinline', ''); v.autoplay = true;
+  const v = document.createElement("video");
+  v.muted = true;
+  v.setAttribute("playsinline", "");
+  v.autoplay = true;
   let s = null;
   try {
     s = await navigator.mediaDevices.getUserMedia({ audio: false, video: variant.video });
     v.srcObject = s;
     await v.play();
     await new Promise((r) => setTimeout(r, 700)); // let exposure and size settle
-    const w = v.videoWidth, h = v.videoHeight;
+    const w = v.videoWidth,
+      h = v.videoHeight;
     const k = 120 / Math.max(w, h);
-    const c = document.createElement('canvas');
-    c.width = Math.round(w * k); c.height = Math.round(h * k);
-    c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+    const c = document.createElement("canvas");
+    c.width = Math.round(w * k);
+    c.height = Math.round(h * k);
+    c.getContext("2d").drawImage(v, 0, 0, c.width, c.height);
     const st = s.getVideoTracks()[0].getSettings();
-    return { id: variant.id, note: variant.note, ok: true, video: w + 'x' + h,
-      settings: { width: st.width, height: st.height, aspectRatio: st.aspectRatio && +st.aspectRatio.toFixed(3), resizeMode: st.resizeMode, zoom: st.zoom },
-      thumb: c.toDataURL('image/jpeg', 0.7) };
+    return {
+      id: variant.id,
+      note: variant.note,
+      ok: true,
+      video: w + "x" + h,
+      settings: {
+        width: st.width,
+        height: st.height,
+        aspectRatio: st.aspectRatio && +st.aspectRatio.toFixed(3),
+        resizeMode: st.resizeMode,
+        zoom: st.zoom,
+      },
+      thumb: c.toDataURL("image/jpeg", 0.7),
+    };
   } catch (e) {
     return { id: variant.id, note: variant.note, ok: false, error: e.name || String(e) };
   } finally {

@@ -1,14 +1,16 @@
-import * as store from './store.js';
-import { ANALYSIS_VERSION } from './practice-data.js';
-import { COACHING_VERSION } from './coaching-insights.js';
-import { initTraining } from './training.js';
-import { initPhaseComparison } from './phase-comparison.js';
-import { initTossProgress } from './toss-progress.js';
+import * as store from "./store.js";
+import { ANALYSIS_VERSION } from "./practice-data.js";
+import { COACHING_VERSION } from "./coaching-insights.js";
+import { initTraining } from "./training.js";
+import { initPhaseComparison } from "./phase-comparison.js";
+import { initTossProgress } from "./toss-progress.js";
 
-const HEAR_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/></svg>';
-const STOP_ICON = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
+const HEAR_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/></svg>';
+const STOP_ICON =
+  '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
 export function initProgressCoaching({ openMoment }) {
-  const host = document.getElementById('coach');
+  const host = document.getElementById("coach");
   host.innerHTML = `<h2 class="sec-h" id="coachSecH">AI coaching insights</h2>
     <label class="field-label" for="coachClip">Recording</label>
     <select class="input" id="coachClip"></select>
@@ -21,40 +23,89 @@ export function initProgressCoaching({ openMoment }) {
   const comparison = initPhaseComparison(host);
   const renderTraining = initTraining(host);
   const renderToss = initTossProgress(host, openMoment);
-  const select = document.getElementById('coachClip'), body = document.getElementById('coachBody');
-  const status = document.getElementById('coachStatus'), hear = document.getElementById('hearBtn');
-  const reanalyse = document.getElementById('coachReanalyse');
-  let selected = null, text = '', utterance = null, token = 0;
-  function reset() { utterance = null; hear.innerHTML = HEAR_ICON + 'Hear it'; hear.setAttribute('aria-pressed', 'false'); }
-  function stop() { const speaking = utterance; reset(); if (speaking) { try { window.speechSynthesis.cancel(); } catch {} } }
-  hear.addEventListener('click', () => {
-    if (utterance) { stop(); return; }
+  const select = document.getElementById("coachClip"),
+    body = document.getElementById("coachBody");
+  const status = document.getElementById("coachStatus"),
+    hear = document.getElementById("hearBtn");
+  const reanalyse = document.getElementById("coachReanalyse");
+  let selected = null,
+    text = "",
+    utterance = null,
+    token = 0;
+  function reset() {
+    utterance = null;
+    hear.innerHTML = HEAR_ICON + "Hear it";
+    hear.setAttribute("aria-pressed", "false");
+  }
+  function stop() {
+    const speaking = utterance;
+    reset();
+    if (speaking) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch {}
+    }
+  }
+  hear.addEventListener("click", () => {
+    if (utterance) {
+      stop();
+      return;
+    }
     if (!text || !window.speechSynthesis) return;
     try {
       window.speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text); u.rate = 0.95; utterance = u;
-      hear.innerHTML = STOP_ICON + 'Stop audio'; hear.setAttribute('aria-pressed', 'true');
-      u.onend = () => { if (utterance === u) reset(); };
-      u.onerror = () => { if (utterance === u) { reset(); status.textContent = 'Audio could not be played. Your observations are shown below.'; } };
+      const u = new SpeechSynthesisUtterance(text);
+      u.rate = 0.95;
+      utterance = u;
+      hear.innerHTML = STOP_ICON + "Stop audio";
+      hear.setAttribute("aria-pressed", "true");
+      u.onend = () => {
+        if (utterance === u) reset();
+      };
+      u.onerror = () => {
+        if (utterance === u) {
+          reset();
+          status.textContent = "Audio could not be played. Your observations are shown below.";
+        }
+      };
       window.speechSynthesis.speak(u);
-    } catch { reset(); status.textContent = 'Audio is unavailable on this device.'; }
+    } catch {
+      reset();
+      status.textContent = "Audio is unavailable on this device.";
+    }
   });
-  window.addEventListener('pagehide', stop);
-  window.addEventListener('hashchange', () => { if (location.hash !== '#progress') { token++; stop(); } });
+  window.addEventListener("pagehide", stop);
+  window.addEventListener("hashchange", () => {
+    if (location.hash !== "#progress") {
+      token++;
+      stop();
+    }
+  });
   async function load(id, refresh = false) {
-    const request = ++token; stop(); text = ''; hear.disabled = true; body.replaceChildren();
+    const request = ++token;
+    stop();
+    text = "";
+    hear.disabled = true;
+    body.replaceChildren();
     comparison.clear();
     renderToss(null);
     reanalyse.disabled = true;
     renderTraining();
-    status.textContent = 'Reading saved movement data…'; selected = id;
+    status.textContent = "Reading saved movement data…";
+    selected = id;
     try {
       const clip = await store.getClip(id);
-      if (!clip || clip.deletedAt) throw new Error('missing');
+      if (!clip || clip.deletedAt) throw new Error("missing");
       let analysis = await store.getClipAnalysis(id);
-      if (!clip.restoredWithoutVideo && (refresh || analysis?.schemaVersion !== ANALYSIS_VERSION
-        || analysis?.coaching?.version !== COACHING_VERSION)) analysis = await store.finalizeClipData(id);
-      else if (refresh && (await store.getClipPoses(id)).length) analysis = await store.finalizeClipData(id);
+      if (
+        !clip.restoredWithoutVideo &&
+        (refresh ||
+          analysis?.schemaVersion !== ANALYSIS_VERSION ||
+          analysis?.coaching?.version !== COACHING_VERSION)
+      )
+        analysis = await store.finalizeClipData(id);
+      else if (refresh && (await store.getClipPoses(id)).length)
+        analysis = await store.finalizeClipData(id);
       if (request !== token) return;
       const canReanalyse = !clip.restoredWithoutVideo || (await store.getClipPoses(id)).length > 0;
       if (request !== token) return;
@@ -63,66 +114,108 @@ export function initProgressCoaching({ openMoment }) {
       renderToss(clip);
       const feedback = analysis?.coaching;
       renderTraining(clip, feedback, analysis);
-      document.getElementById('coachSource').textContent = `${new Date(clip.createdAt).toLocaleString()} · ${clip.source === 'upload' ? 'Uploaded footage' : 'Recorded practice'}`;
-      if (feedback?.status !== 'supported') {
-        status.textContent = `Insufficient data for reliable coaching. ${feedback?.reason || 'No clear movement data is available.'}`;
+      document.getElementById("coachSource").textContent =
+        `${new Date(clip.createdAt).toLocaleString()} · ${clip.source === "upload" ? "Uploaded footage" : "Recorded practice"}`;
+      if (feedback?.status !== "supported") {
+        status.textContent = `Insufficient data for reliable coaching. ${feedback?.reason || "No clear movement data is available."}`;
         return;
       }
-      status.textContent = 'One tracked overhead sequence in this recording; not a summary of every serve.';
+      status.textContent =
+        "One tracked overhead sequence in this recording; not a summary of every serve.";
       const spoken = [];
-      for (const [key, label] of [['positive', 'What went well'], ['improvement', 'Potential improvement'], ['recommendation', 'Try next']]) {
-        const section = document.createElement('article'); section.className = 'block';
-        const h = document.createElement('h3'); h.className = 'sub-h'; h.textContent = label;
-        const p = document.createElement('p'); const item = feedback[key];
-        p.className = key === 'positive' ? 'praise' : 'fix-p';
-        p.textContent = item?.text || 'No specific improvement is supported by this tracked sequence.';
+      for (const [key, label] of [
+        ["positive", "What went well"],
+        ["improvement", "Potential improvement"],
+        ["recommendation", "Try next"],
+      ]) {
+        const section = document.createElement("article");
+        section.className = "block";
+        const h = document.createElement("h3");
+        h.className = "sub-h";
+        h.textContent = label;
+        const p = document.createElement("p");
+        const item = feedback[key];
+        p.className = key === "positive" ? "praise" : "fix-p";
+        p.textContent =
+          item?.text || "No specific improvement is supported by this tracked sequence.";
         section.append(h, p);
         if (item) {
           const e = item.evidence;
-          const source = document.createElement('p'); source.className = 'kicker';
+          const source = document.createElement("p");
+          source.className = "kicker";
           source.textContent = `Saved frame ${e.frameIndex + 1} · minimum landmark confidence ${Math.round(e.minLandmarkConfidence * 100)}%`;
           section.append(source);
           if (Number.isFinite(e.timestampMs) && !clip.restoredWithoutVideo) {
-            const b = document.createElement('button'); b.className = 'btn btn-quiet'; b.type = 'button';
+            const b = document.createElement("button");
+            b.className = "btn btn-quiet";
+            b.type = "button";
             b.textContent = `▶ View estimated moment · ${(e.timestampMs / 1000).toFixed(3)} s`;
-            b.addEventListener('click', () => { stop(); openMoment(id, e.poseTimestampMs); }); section.append(b);
+            b.addEventListener("click", () => {
+              stop();
+              openMoment(id, e.poseTimestampMs);
+            });
+            section.append(b);
           } else if (clip.restoredWithoutVideo) {
-            source.textContent += ' · Restored analysis without video.';
+            source.textContent += " · Restored analysis without video.";
           } else {
-            source.textContent += ' · Video timing is not aligned yet; open Replay to align it.';
+            source.textContent += " · Video timing is not aligned yet; open Replay to align it.";
           }
-          spoken.push(`${label}. ${item.text}${Number.isFinite(e.timestampMs) ? ` At approximately ${(e.timestampMs / 1000).toFixed(2)} seconds.` : ''}`);
+          spoken.push(
+            `${label}. ${item.text}${Number.isFinite(e.timestampMs) ? ` At approximately ${(e.timestampMs / 1000).toFixed(2)} seconds.` : ""}`,
+          );
         }
         body.append(section);
       }
-      text = spoken.join(' '); hear.disabled = !text || !window.speechSynthesis;
+      text = spoken.join(" ");
+      hear.disabled = !text || !window.speechSynthesis;
     } catch {
-      if (request === token) status.textContent = 'Saved coaching could not be read. Reopen Progress to try again.';
+      if (request === token)
+        status.textContent = "Saved coaching could not be read. Reopen Progress to try again.";
     }
   }
-  reanalyse.addEventListener('click', () => { if (selected) load(selected, true); });
-  select.addEventListener('change', () => load(select.value));
+  reanalyse.addEventListener("click", () => {
+    if (selected) load(selected, true);
+  });
+  select.addEventListener("change", () => load(select.value));
   async function render() {
-    const request = ++token; stop(); hear.disabled = true; text = ''; body.replaceChildren();
+    const request = ++token;
+    stop();
+    hear.disabled = true;
+    text = "";
+    body.replaceChildren();
     comparison.clear();
     renderToss(null);
     reanalyse.disabled = true;
     renderTraining();
-    document.getElementById('coachSource').textContent = ''; status.textContent = 'Loading recordings…';
+    document.getElementById("coachSource").textContent = "";
+    status.textContent = "Loading recordings…";
     try {
       const sessions = await store.listSessions();
       if (request !== token) return;
-      const clips = sessions.flatMap(s => s.clips).filter(c => !c.deletedAt && c.status !== 'recording' && c.status !== 'interrupted-empty')
+      const clips = sessions
+        .flatMap((s) => s.clips)
+        .filter((c) => !c.deletedAt && c.status !== "recording" && c.status !== "interrupted-empty")
         .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)) || b.seq - a.seq);
-      select.replaceChildren(); select.disabled = !clips.length;
+      select.replaceChildren();
+      select.disabled = !clips.length;
       for (const clip of clips) {
-        const option = document.createElement('option'); option.value = clip.id;
-        option.textContent = `${new Date(clip.createdAt).toLocaleString()} · Clip ${clip.seq}`; select.append(option);
+        const option = document.createElement("option");
+        option.value = clip.id;
+        option.textContent = `${new Date(clip.createdAt).toLocaleString()} · Clip ${clip.seq}`;
+        select.append(option);
       }
-      if (!clips.length) { status.textContent = 'Insufficient data for reliable coaching. Save a recording with clear body tracking first.'; return; }
-      selected = clips.some(c => c.id === selected) ? selected : clips[0].id;
-      select.value = selected; await load(selected);
-    } catch { if (request === token) status.textContent = 'Recordings could not be read. Reopen Progress to try again.'; }
+      if (!clips.length) {
+        status.textContent =
+          "Insufficient data for reliable coaching. Save a recording with clear body tracking first.";
+        return;
+      }
+      selected = clips.some((c) => c.id === selected) ? selected : clips[0].id;
+      select.value = selected;
+      await load(selected);
+    } catch {
+      if (request === token)
+        status.textContent = "Recordings could not be read. Reopen Progress to try again.";
+    }
   }
   return { render, stop };
 }
