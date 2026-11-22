@@ -328,7 +328,7 @@ export function initPhaseComparison(host) {
     try {
       const [saved, { blob }] = await Promise.all([
         store.getClipPoses(clip.id),
-        store.getClipVideo(clip),
+        store.getClipVideo(clip, { playback: true }),
       ]);
       if (generation !== loadToken) return;
       if (!blob.size) throw new Error("empty");

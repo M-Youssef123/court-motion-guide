@@ -388,12 +388,12 @@ export function putPoses(clipId, seq, frames) {
   return tx("poses", "readwrite", (t) => t.objectStore("poses").put({ clipId, seq, frames }));
 }
 /** The clip's video as one Blob (chunks joined in order). */
-export async function getClipVideo(clip) {
+export async function getClipVideo(clip, { playback = false } = {}) {
   const chunks = (await getAll("chunks", range(clip.id))).sort((a, b) => a.seq - b.seq);
   return {
     blob: new Blob(
       chunks.map((c) => c.blob),
-      { type: (clip.video && clip.video.mime) || "video/mp4" },
+      { type: (playback && clip.video?.playbackMime) || clip.video?.mime || "video/mp4" },
     ),
     chunks: chunks.length,
   };

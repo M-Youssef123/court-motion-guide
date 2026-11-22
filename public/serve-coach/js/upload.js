@@ -23,6 +23,8 @@ const VIDEO_TYPES = {
 };
 const MAX_MODEL_EDGE = 640;
 export function uploadMime(file) {
+  if (["application/mp4", "video/x-m4v"].includes(file.type)) return "video/mp4";
+  if (file.type === "video/mov") return "video/quicktime";
   if (file.type?.startsWith("video/")) return file.type;
   if (file.type && file.type !== "application/octet-stream") return "";
   const extension = (file.name || "").match(/\.([^.]+)$/)?.[1].toLowerCase();
@@ -102,8 +104,10 @@ export function initUpload({ openClip }) {
     btn.setAttribute("aria-busy", "true");
     progress(0, "Opening video…");
     const mime = uploadMime(file);
-    const url = URL.createObjectURL(file.type === mime ? file : file.slice(0, file.size, mime));
+    let url,
+      playbackMime = mime;
     const v = document.createElement("video");
+    v.defaultMuted = true;
     v.muted = true;
     v.playsInline = true;
     v.preload = "auto";
@@ -113,12 +117,53 @@ export function initUpload({ openClip }) {
     // Keep a real inline picture rather than a transparent/offscreen decoder surface.
     v.style.cssText =
       "display:block;width:100%;height:180px;object-fit:contain;pointer-events:none;margin-block:8px";
-    box.appendChild(v);
+    const startVideo = document.createElement("button");
+    startVideo.type = "button";
+    startVideo.className = "btn btn-quiet";
+    startVideo.textContent = "Play video to start upload";
+    startVideo.hidden = true;
+    box.append(v, startVideo);
     let session = null,
       clip = null;
     const canvas = document.createElement("canvas");
     try {
-      await openUploadVideo(v, url, { signal: controller.signal });
+      // MOV and MP4 share the ISO media container family. Some file pickers
+      // label supported clips QuickTime even when the browser needs an MP4 hint.
+      const types = mime === "video/quicktime" ? [mime, "video/mp4"] : [mime];
+      for (const type of types) {
+        url = URL.createObjectURL(file.type === type ? file : file.slice(0, file.size, type));
+        try {
+          await openUploadVideo(v, url, {
+            signal: controller.signal,
+            onPlaybackNeeded(play) {
+              startVideo.hidden = false;
+              startVideo.onclick = async () => {
+                try {
+                  await play();
+                } catch {
+                  if (!controller?.signal.aborted && !startVideo.hidden)
+                    show("Playback could not start. Try choosing the video from Files.", "warn");
+                }
+              };
+            },
+          });
+          playbackMime = type;
+          break;
+        } catch (error) {
+          if (!controller.signal.aborted && error.mediaCode === 4 && type !== types.at(-1)) {
+            v.removeAttribute("src");
+            v.load();
+            URL.revokeObjectURL(url);
+            url = null;
+            continue;
+          }
+          throw error;
+        } finally {
+          startVideo.hidden = true;
+          startVideo.onclick = null;
+        }
+      }
+      show("");
       const dur = v.duration;
       if (!Number.isFinite(dur) || dur <= 0) throw new Error("This video has no readable length.");
       if (dur > MAX_UPLOAD_SECONDS)
@@ -180,6 +225,7 @@ export function initUpload({ openClip }) {
         camera: { facing: "environment", label: "Uploaded video" },
         video: {
           mime,
+          playbackMime,
           width: W,
           height: H,
           orientation: H > W ? "portrait" : "landscape",
@@ -250,7 +296,8 @@ export function initUpload({ openClip }) {
       v.removeAttribute("src");
       v.load();
       v.remove();
-      URL.revokeObjectURL(url);
+      startVideo.remove();
+      if (url) URL.revokeObjectURL(url);
       controller = null;
     }
   }

@@ -559,7 +559,10 @@ export function initReplay({ onDeleted } = {}) {
     }
     clipBlob = blob;
     setSave("ready");
-    url = URL.createObjectURL(blob);
+    const playbackMime = clip.video?.playbackMime;
+    url = URL.createObjectURL(
+      playbackMime && playbackMime !== blob.type ? blob.slice(0, blob.size, playbackMime) : blob,
+    );
     video.src = url;
     setRate(1);
     document

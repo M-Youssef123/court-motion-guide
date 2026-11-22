@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 // @ts-expect-error plain JS module
-import { uploadProblem } from "../../public/serve-coach/js/upload.js";
+import { uploadMime, uploadProblem } from "../../public/serve-coach/js/upload.js";
 // @ts-expect-error plain JS module
 import { openUploadVideo, seekUploadVideo } from "../../public/serve-coach/js/upload-media.js";
 describe("uploadProblem", () => {
@@ -21,7 +21,7 @@ class MediaStub extends EventTarget {
   seeking = false;
   error: object | null = null;
   load = vi.fn();
-  play = vi.fn(() => Promise.reject(new Error("Playback denied")));
+  play = vi.fn<() => Promise<void>>(() => Promise.reject(new Error("Playback denied")));
   pause = vi.fn();
   metadata() {
     this.readyState = 1;
@@ -69,12 +69,42 @@ describe("upload media readiness", () => {
     expect(video.pause).toHaveBeenCalledOnce();
   });
 
+  it("waits for a fresh tap if muted autoplay leaves the decoder waiting", async () => {
+    const video = new MediaStub();
+    let requestPlay: (() => Promise<void>) | undefined;
+    const opening = openUploadVideo(video, "blob:phone", {
+      promptDelayMs: 0,
+      onPlaybackNeeded: (play: () => Promise<void>) => {
+        requestPlay = play;
+      },
+    });
+    video.metadata();
+    await vi.waitFor(() => expect(requestPlay).toBeTypeOf("function"));
+    video.play.mockImplementationOnce(async () => {
+      video.readyState = 2;
+      video.dispatchEvent(new Event("playing"));
+    });
+    await requestPlay!();
+    await opening;
+    expect(video.play).toHaveBeenCalledTimes(2);
+  });
+
+  it("reports startup stalls separately from unsupported formats", async () => {
+    const video = new MediaStub();
+    await expect(openUploadVideo(video, "blob:slow", { timeoutMs: 5 })).rejects.toThrow(
+      "didn’t load the video in time",
+    );
+  });
+
   it("rejects decoder errors without waiting for a timeout", async () => {
     const video = new MediaStub();
     const opening = openUploadVideo(video, "blob:test");
     video.error = { code: 4 };
     video.dispatchEvent(new Event("error"));
-    await expect(opening).rejects.toThrow("H.264 MP4");
+    await expect(opening).rejects.toMatchObject({
+      mediaCode: 4,
+      message: expect.stringContaining("H.264 MP4"),
+    });
   });
 
   it("does not sample a frame while the seek or decoding is incomplete", async () => {
@@ -115,4 +145,10 @@ it("accepts a generic MIME type for a camera MOV but rejects an unrelated file",
     uploadProblem({ type: "application/octet-stream", name: "Serve.MOV", size: 100 }),
   ).toBeNull();
   expect(uploadProblem({ type: "", name: "notes.txt", size: 100 })).toMatch(/isn’t a video/);
+});
+
+it("normalizes MP4 and MOV types reported by file pickers", () => {
+  expect(uploadMime({ type: "application/mp4" })).toBe("video/mp4");
+  expect(uploadMime({ type: "video/x-m4v" })).toBe("video/mp4");
+  expect(uploadMime({ type: "video/mov" })).toBe("video/quicktime");
 });

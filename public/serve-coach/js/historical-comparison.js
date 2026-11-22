@@ -172,7 +172,7 @@ export function initHistoricalComparison(host) {
           const [frames, saved, media] = await Promise.all([
             store.getClipPoses(clip.id),
             store.getClipAnalysis(clip.id),
-            clip.restoredWithoutVideo ? null : store.getClipVideo(clip),
+            clip.restoredWithoutVideo ? null : store.getClipVideo(clip, { playback: true }),
           ]);
           if (generation !== request) return;
           const arm = resolveServingArm(clip, session, null);

@@ -114,7 +114,7 @@ export function initTossProgress(host, openMoment) {
     try {
       const [frames, { blob }] = await Promise.all([
         store.getClipPoses(selected.id),
-        store.getClipVideo(selected),
+        store.getClipVideo(selected, { playback: true }),
       ]);
       if (task.signal.aborted) throw new Error("cancelled");
       if (!blob.size) throw new Error("empty");
