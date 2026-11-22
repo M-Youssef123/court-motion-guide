@@ -36,7 +36,7 @@ Bottom tabs: **Home · Record · Progress**. The AI coach lives inside Progress.
 | `#home` (default) | Welcome, Start a practice, recent practice, latest insight, link to Progress |
 | `#setup` | 5-step camera setup (shown under the Record tab) |
 | `#record` | Practice screen; sends you to setup until a camera spot is saved |
-| `#progress` | AI coaching insights → Video recordings → Serve comparisons → Practice sessions → Notes |
+| `#progress` | AI coaching insights → Video recordings → Practice sessions → Notes |
 
 Old prototype links still work: `#live` → `#record`, `#coach` and `#log` → `#progress`.
 

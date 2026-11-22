@@ -85,54 +85,12 @@ export function comparisonText(series, mode, selectedSession) {
 
 export function initSessionProgress() {
   const list = document.getElementById("sessions");
-  const comparison = document.getElementById("comparisonSummary");
-  const graph = document.getElementById("comparisonGraph");
-  let mode = "last",
-    series = [],
-    request = 0;
-  const paint = () => {
-    comparison.textContent = comparisonText(series, mode);
-  };
-  document.querySelectorAll("[data-cmp]").forEach((button) =>
-    button.addEventListener("click", () => {
-      mode = button.dataset.cmp;
-      document
-        .querySelectorAll("[data-cmp]")
-        .forEach((b) => b.setAttribute("aria-pressed", String(b === button)));
-      paint();
-    }),
-  );
+  let request = 0;
   return async function render() {
     const token = ++request;
     try {
       const data = await getJournalData();
       if (request !== token) return;
-      series = comparisonSeries(data);
-      paint();
-      graph.replaceChildren();
-      graph.hidden = !series.length;
-      for (const row of series) {
-        const label = document.createElement("label");
-        label.className = "sess";
-        label.textContent = `${dateLabel(row.session)} · ${round(row.mean)}° · ${row.count} tracked clip${row.count === 1 ? "" : "s"} `;
-        const bar = document.createElement("meter");
-        bar.min = 0;
-        bar.max = 180;
-        bar.value = row.mean;
-        label.append(bar);
-        graph.append(label);
-        if (row.spread !== null) {
-          const spread = document.createElement("label");
-          spread.className = "sess";
-          spread.textContent = `${dateLabel(row.session)} · Variation across clips ${round(row.spread)}° `;
-          const variation = document.createElement("meter");
-          variation.min = 0;
-          variation.max = 90;
-          variation.value = row.spread;
-          spread.append(variation);
-          graph.append(spread);
-        }
-      }
       list.replaceChildren();
       for (const session of data.sessions.sort((a, b) => b.createdAt.localeCompare(a.createdAt))) {
         const clips = data.clips.filter(
@@ -148,9 +106,10 @@ export function initSessionProgress() {
       }
       document.getElementById("sessionsEmpty").hidden = Boolean(list.childElementCount);
     } catch {
-      if (request === token)
-        comparison.textContent =
-          "Saved practice data could not be opened. Reopen Progress to retry.";
+      if (request !== token) return;
+      const empty = document.getElementById("sessionsEmpty");
+      empty.hidden = false;
+      empty.textContent = "Saved practice data could not be opened. Reopen Progress to retry.";
     }
   };
 }
