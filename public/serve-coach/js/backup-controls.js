@@ -63,7 +63,7 @@ export function initBackupControls(onRestored) {
       try {
         backup = JSON.parse(await file.text());
       } catch {
-        throw new Error("This file is not valid JSON. Choose a Serve Coach backup.");
+        throw new Error("This file is not valid JSON. Choose a Ace.Tennis backup.");
       }
       const result = await importPracticeBackup(backup);
       ready = null;

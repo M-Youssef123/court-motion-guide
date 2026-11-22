@@ -59,7 +59,7 @@ export function initPhaseComparison(host) {
         <button class="btn btn-ball" type="button" id="phaseUse">Use this frame for Trophy</button>
         <button class="btn btn-quiet" type="button" id="phaseAuto" hidden>Use automatic frame</button>
       </div>
-      <p class="kicker">Original Serve Coach illustration, not measured ideal technique. Differences describe this camera view, not ball release, serve accuracy or landing balance.</p>
+      <p class="kicker">Original Ace.Tennis illustration, not measured ideal technique. Differences describe this camera view, not ball release, serve accuracy or landing balance.</p>
     </div><video id="phaseVideo" preload="auto" playsinline muted hidden></video>`;
   host.append(section);
   const $ = (id) => section.querySelector("#" + id),

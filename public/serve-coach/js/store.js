@@ -139,7 +139,7 @@ function db() {
       };
       req.onblocked = () =>
         reject(
-          new Error("Storage is busy in another tab. Close other Serve Coach tabs and try again."),
+          new Error("Storage is busy in another tab. Close other Ace.Tennis tabs and try again."),
         );
     });
   }

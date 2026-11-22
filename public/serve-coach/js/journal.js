@@ -31,7 +31,7 @@ export function buildJournal(data, exportedAt = new Date()) {
   const notes = data.notes.filter((n) => !n.deletedAt);
   const hands = [...new Set(sessions.map((s) => hand(s.dominantHand || s.playerHand || s.hand)))];
   const lines = [
-    "Serve Coach Practice Journal",
+    "Ace.Tennis Practice Journal",
     `Exported: ${dateText(exportedAt)}`,
     "",
     divider,

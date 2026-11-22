@@ -11,7 +11,7 @@ const date = (value) => typeof value === "string" && Number.isFinite(Date.parse(
 const number = (value, low, high) => Number.isFinite(value) && value >= low && value <= high;
 const definedNumber = (value, low, high) => value == null || number(value, low, high);
 const invalid = (name) => {
-  throw new Error(`Invalid ${name} in this Serve Coach backup.`);
+  throw new Error(`Invalid ${name} in this Ace.Tennis backup.`);
 };
 
 export function buildBackup(records) {
@@ -31,7 +31,7 @@ export function validateBackup(backup) {
     backup.media !== "metadata-only" ||
     !date(backup.createdAt)
   ) {
-    throw new Error("Choose a supported Serve Coach JSON practice backup.");
+    throw new Error("Choose a supported Ace.Tennis JSON practice backup.");
   }
   const records = {};
   for (const [name, key] of [
