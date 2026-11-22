@@ -78,7 +78,7 @@ function waitFor(el, ev, ms = 6000) {
 export function initReplay({ onDeleted } = {}) {
   const styles = document.createElement("link");
   styles.rel = "stylesheet";
-  styles.href = new URL("../replay-analysis.css?v=1.6.1", import.meta.url).href;
+  styles.href = new URL("../replay-analysis.css?v=1.6.2", import.meta.url).href;
   document.head.appendChild(styles);
   const video = $("rpVideo");
   const overlay = new SkeletonOverlay($("rpCanvas"), video);
@@ -584,7 +584,9 @@ export function initReplay({ onDeleted } = {}) {
     setSave("ready");
     const playbackMime = clip.video?.playbackMime;
     url = URL.createObjectURL(
-      playbackMime && playbackMime !== blob.type ? blob.slice(0, blob.size, playbackMime) : blob,
+      typeof playbackMime === "string" && playbackMime !== blob.type
+        ? blob.slice(0, blob.size, playbackMime)
+        : blob,
     );
     video.src = url;
     setRate(1);
@@ -606,8 +608,9 @@ export function initReplay({ onDeleted } = {}) {
 
     offsetMs = clip.sync && clip.sync.offsetMs != null ? clip.sync.offsetMs : defaultOffsetMs();
     if (!frames.length) {
-      $("rpStatus").textContent =
-        "No movement data was saved for this clip, so there is no skeleton.";
+      $("rpStatus").textContent = clip.uploadAnalysisIncomplete
+        ? "Video saved. This phone couldn’t analyse the movement."
+        : "No movement data was saved for this clip, so there is no skeleton.";
     } else if (forceRealign || !clip.sync || clip.sync.offsetMs == null) {
       calibrating = true;
       overlay.clear();
@@ -640,7 +643,9 @@ export function initReplay({ onDeleted } = {}) {
       video.currentTime = 0;
       await waitFor(video, "seeked", 3000);
     } else {
-      $("rpStatus").textContent = "";
+      $("rpStatus").textContent = clip.uploadAnalysisIncomplete
+        ? "Video saved. Tracking covers only the frames the phone could analyse."
+        : "";
     }
     if (token !== openToken) return;
     paintSpeed();

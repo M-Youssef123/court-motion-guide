@@ -1,5 +1,6 @@
 /* Media readiness for on-device uploads. Never sample an undecoded or unseeked frame. */
-const OPEN_ERROR = "This browser couldn’t decode this video. Try exporting a copy as H.264 MP4.";
+const OPEN_ERROR =
+  "This phone couldn’t open the video. Try selecting it from Files or choose another clip.";
 const START_TIMEOUT =
   "The browser didn’t load the video in time. Try again with a copy saved on this device.";
 
@@ -77,7 +78,12 @@ export async function openUploadVideo(video, url, options = {}) {
 
 /** Try alternate container labels without altering the recorded bytes. */
 export async function openUploadFile(video, file, mime, options = {}) {
-  const types = mime === "video/quicktime" ? [mime, "video/mp4"] : [mime];
+  const types =
+    mime === "video/quicktime"
+      ? [mime, "video/mp4", ""]
+      : mime === "video/mp4"
+        ? [mime, ""]
+        : [mime];
   for (const type of types) {
     const source = file.type === type ? file : file.slice(0, file.size, type);
     const url = URL.createObjectURL(source);
@@ -88,7 +94,8 @@ export async function openUploadFile(video, file, mime, options = {}) {
       video.removeAttribute("src");
       video.load();
       URL.revokeObjectURL(url);
-      if (options.signal?.aborted || error.mediaCode !== 4 || type === types.at(-1)) throw error;
+      if (options.signal?.aborted || ![3, 4].includes(error.mediaCode) || type === types.at(-1))
+        throw error;
       options.onRetry?.();
     }
   }
@@ -104,7 +111,7 @@ export async function seekUploadVideo(video, time, options = {}) {
     {
       ...options,
       timeoutMs: options.timeoutMs ?? 10000,
-      message: "This video stopped decoding during processing. Try an H.264 MP4 copy.",
+      message: "The browser could not read this frame.",
       timeoutMessage: "The browser stopped decoding frames during analysis. Try a shorter copy.",
     },
   );

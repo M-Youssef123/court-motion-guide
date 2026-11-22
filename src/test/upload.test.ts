@@ -1,12 +1,16 @@
+import "fake-indexeddb/auto";
+import { Blob as NodeBlob, File as NodeFile } from "node:buffer";
 import { describe, it, expect, vi } from "vitest";
 // @ts-expect-error plain JS module
-import { uploadMime, uploadProblem } from "../../public/serve-coach/js/upload.js";
+import { initUpload, uploadMime, uploadProblem } from "../../public/serve-coach/js/upload.js";
 import {
   openUploadFile,
   openUploadVideo,
   seekUploadVideo,
   // @ts-expect-error plain JS module
 } from "../../public/serve-coach/js/upload-media.js";
+// @ts-expect-error plain JS module
+import * as store from "../../public/serve-coach/js/store.js";
 describe("uploadProblem", () => {
   it("rejects non-video files", () =>
     expect(uploadProblem({ type: "image/png", size: 10 })).toMatch(/isn’t a video/));
@@ -110,7 +114,7 @@ describe("upload media readiness", () => {
     video.dispatchEvent(new Event("error"));
     await expect(opening).rejects.toMatchObject({
       mediaCode: 4,
-      message: expect.stringContaining("H.264 MP4"),
+      message: expect.stringContaining("Try selecting it from Files"),
     });
   });
 
@@ -191,6 +195,81 @@ it("retries QuickTime with an MP4 hint and keeps the original file bytes", async
     expect(original.name).toBe("test.mov");
     expect(original.type).toBe("video/quicktime");
   } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+it("lets the browser inspect a MOV when both explicit playback hints are rejected", async () => {
+  const video = new MediaStub();
+  const file = new File([Uint8Array.of(1, 2, 3)], "serve.mov", { type: "video/quicktime" });
+  const create = vi.fn((blob: Blob) => `blob:${blob.type}`);
+  const revoke = vi.fn();
+  vi.stubGlobal(
+    "URL",
+    Object.assign(class extends URL {}, { createObjectURL: create, revokeObjectURL: revoke }),
+  );
+  try {
+    video.load.mockImplementation(() => {
+      video.readyState = 0;
+      video.error = null;
+      if (video.src === "blob:") {
+        video.metadata();
+        video.readyState = 2;
+      } else if (video.src) video.error = { code: 4 };
+    });
+    await expect(openUploadFile(video, file, file.type)).resolves.toEqual({
+      url: "blob:",
+      playbackMime: "",
+    });
+    expect(create.mock.calls.map(([blob]) => blob.type)).toEqual([
+      "video/quicktime",
+      "video/mp4",
+      "",
+    ]);
+    expect(revoke).toHaveBeenCalledTimes(2);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+it("saves the original playable upload when movement processing is unavailable", async () => {
+  document.body.innerHTML = `<input type="file" id="upInput"><button id="upBtn"></button>
+    <div id="upBox"><div id="upBar"></div><p id="upPct"></p><button id="upCancel"></button></div>
+    <p id="upMsg"></p>`;
+  const input = document.querySelector<HTMLInputElement>("#upInput")!;
+  const file = new NodeFile([Uint8Array.of(1, 2, 3, 4)], "serve.mov", { type: "video/quicktime" });
+  Object.defineProperty(input, "files", { value: [file] });
+  vi.stubGlobal("Blob", NodeBlob);
+  vi.stubGlobal(
+    "URL",
+    Object.assign(class extends URL {}, {
+      createObjectURL: vi.fn(() => "blob:serve-test"),
+      revokeObjectURL: vi.fn(),
+    }),
+  );
+  vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => {});
+  vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+  vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+  vi.spyOn(HTMLMediaElement.prototype, "readyState", "get").mockReturnValue(2);
+  vi.spyOn(HTMLMediaElement.prototype, "duration", "get").mockReturnValue(2);
+  vi.spyOn(HTMLVideoElement.prototype, "videoWidth", "get").mockReturnValue(640);
+  vi.spyOn(HTMLVideoElement.prototype, "videoHeight", "get").mockReturnValue(480);
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+  try {
+    const openClip = vi.fn();
+    initUpload({ openClip });
+    input.dispatchEvent(new Event("change"));
+    await vi.waitFor(() => expect(openClip).toHaveBeenCalledOnce());
+    const clip = await store.getClip(openClip.mock.calls[0]?.[0]);
+    expect(clip).toMatchObject({
+      uploadAnalysisIncomplete: true,
+      status: "saved",
+      video: { mime: file.type },
+    });
+    expect((await store.getClipVideo(clip)).blob.size).toBe(file.size);
+    expect(document.querySelector("#upMsg")?.textContent).toContain("Video saved");
+  } finally {
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
   }
 });

@@ -393,7 +393,10 @@ export async function getClipVideo(clip, { playback = false } = {}) {
   return {
     blob: new Blob(
       chunks.map((c) => c.blob),
-      { type: (playback && clip.video?.playbackMime) || clip.video?.mime || "video/mp4" },
+      {
+        type:
+          (playback ? clip.video?.playbackMime : undefined) ?? (clip.video?.mime || "video/mp4"),
+      },
     ),
     chunks: chunks.length,
   };

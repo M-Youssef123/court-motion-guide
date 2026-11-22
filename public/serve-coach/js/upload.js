@@ -168,20 +168,22 @@ export function initUpload({ openClip }) {
       canvas.width = Math.max(1, Math.round(W * scale));
       canvas.height = Math.max(1, Math.round(H * scale));
       const ctx = canvas.getContext("2d", { alpha: false });
-      if (!ctx) throw new Error("Couldn’t prepare a video frame on this device.");
+      let uploadAnalysisIncomplete = !ctx;
       const frames = [];
       const n = Math.max(1, Math.ceil(dur * SAMPLE_FPS));
       let tracked = 0;
-      for (let i = 0; i < n; i++) {
+      for (let i = 0; ctx && i < n; i++) {
         if (aborted) throw new Error("cancelled");
         const t = i / SAMPLE_FPS;
-        await seekUploadVideo(v, t, { signal: controller.signal });
         let p = null;
         try {
+          await seekUploadVideo(v, t, { signal: controller.signal });
           ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
           p = await estimateFrame(canvas);
         } catch (e) {
-          if (i === 0) throw new Error("Body tracking couldn’t start on this device.");
+          if (aborted) throw e;
+          uploadAnalysisIncomplete = true;
+          break;
         }
         const kp =
           p && p.keypoints
@@ -205,6 +207,7 @@ export function initUpload({ openClip }) {
       clip = await store.createClip(session.id, {
         source: "upload",
         fileName: file.name || "",
+        uploadAnalysisIncomplete,
         status: "recording",
         servingArm: resolveServingArm(null, session, profile),
         side: null,
@@ -254,10 +257,12 @@ export function initUpload({ openClip }) {
       done();
       show(
         analysisWarning ||
-          (tracked
-            ? ""
-            : "Video saved, but no body was found in it, so there’s no skeleton or analysis."),
-        analysisWarning || !tracked ? "warn" : "",
+          (uploadAnalysisIncomplete
+            ? "Video saved. Some or all movement tracking was unavailable."
+            : tracked
+              ? ""
+              : "Video saved. No body tracking was found."),
+        analysisWarning || uploadAnalysisIncomplete || !tracked ? "warn" : "",
       );
       openClip(clip.id);
     } catch (e) {
