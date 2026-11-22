@@ -41,9 +41,6 @@ it("routes the actual static app to Progress and wires coach and backup controls
   await vi.waitFor(() =>
     expect(document.querySelector("#coach .answer")?.textContent).toContain("down together, up together"),
   );
-  const historical = document.querySelector<HTMLDetailsElement>(".historical");
-  historical!.open = true;
-  await vi.waitFor(() => expect(historical?.textContent).toContain("Save two clips"));
   expect(document.querySelector("#coach")?.textContent).not.toContain("Toss consistency");
   expect(document.querySelector("#progress")?.textContent).not.toContain("Your toss stayed put");
 });

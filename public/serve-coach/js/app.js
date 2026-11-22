@@ -17,7 +17,6 @@ import { Preview } from "./preview.js";
 import { initRecord } from "./record.js";
 import { initReplay } from "./replay.js";
 import { initLibrary } from "./library.js";
-import { initHistoricalComparison } from "./historical-comparison.js";
 import { initPractice, planText } from "./practice.js";
 import { tripodName } from "./labels.js";
 import { getPoseInfo } from "./pose.js";
@@ -77,7 +76,6 @@ function route() {
   if (prev === "replay" && h !== "replay") replay.leave();
   if (prev === "progress" && h !== "progress") {
     coaching.stop();
-    historical.clear();
   }
   VIEWS.forEach((v) => {
     $(v).hidden = v !== h;
@@ -97,7 +95,6 @@ function route() {
       library.render();
       notes.render();
       coaching.render();
-      historical.render();
       renderProgress();
     });
   }
@@ -423,9 +420,6 @@ window.addEventListener("pagehide", stopPreview);
 /* ---------- record, replay, library, practice ---------- */
 const replay = initReplay();
 const renderProgress = initSessionProgress();
-const historical = initHistoricalComparison($("coach"), () => {
-  go("practice");
-});
 const coaching = initProgressCoaching({
   openMoment: (id, poseMs, toss) => replay.openMoment(id, poseMs, toss),
 });
@@ -433,7 +427,6 @@ const library = initLibrary({
   openClip: (id) => replay.open(id),
   onDeleted: () => {
     coaching.render();
-    historical.render();
     renderProgress();
   },
 });
@@ -443,7 +436,6 @@ initBackupControls(() => {
   library.render();
   notes.render();
   coaching.render();
-  historical.render();
   renderProgress();
 });
 const record = initRecord({ debug, openClip: (id) => replay.open(id, "record") });
