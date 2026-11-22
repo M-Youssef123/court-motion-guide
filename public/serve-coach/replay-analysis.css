@@ -21,3 +21,5 @@
   border-radius: 0.5rem;
   pointer-events: none;
 }
+.rp-jumps { display: flex; flex-wrap: wrap; gap: .5rem; }
+.rp-jumps .btn { flex: 1 1 9rem; min-height: 44px; }

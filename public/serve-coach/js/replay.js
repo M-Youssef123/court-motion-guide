@@ -25,7 +25,9 @@ import { resolveServingArm } from "./contact-analysis.js";
 
 import { buildClipAnalysis } from "./practice-data.js";
 import { detectServePhases } from "./serve-phases.js";
-import { selectSwing, drawSwingArc } from "./swing-arc.js";
+import { selectSwing, selectTrackedSwing, drawSwingArc } from "./swing-arc.js";
+
+import { seekUploadVideo } from "./upload-media.js";
 
 const $ = (id) => document.getElementById(id);
 const fmtTime = (s) => {
@@ -76,7 +78,7 @@ function waitFor(el, ev, ms = 6000) {
 export function initReplay({ onDeleted } = {}) {
   const styles = document.createElement("link");
   styles.rel = "stylesheet";
-  styles.href = new URL("../replay-analysis.css", import.meta.url).href;
+  styles.href = new URL("../replay-analysis.css?v=1.6.1", import.meta.url).href;
   document.head.appendChild(styles);
   const video = $("rpVideo");
   const overlay = new SkeletonOverlay($("rpCanvas"), video);
@@ -93,7 +95,8 @@ export function initReplay({ onDeleted } = {}) {
   let wantedId = null,
     selectedArm = null,
     wantedPoseMs = null,
-    wantedToss = false;
+    wantedToss = false,
+    realign = false;
 
   const movement = document.createElement("section");
   movement.className = "block";
@@ -106,8 +109,12 @@ export function initReplay({ onDeleted } = {}) {
     <p class="rec-label" id="rpMeasurements"></p>
     <p class="rec-label" id="rpWrist"></p>
     <p class="rec-label" id="rpArcStatus" role="status"></p>
-    <button class="btn btn-quiet" id="rpSpeedPeak" type="button" disabled>Jump to peak wrist movement</button>
-    <button class="btn btn-quiet" id="rpContact" type="button" disabled>Jump to estimated overhead reach</button>
+    <div class="rp-jumps" role="group" aria-label="Jump to a tracked moment">
+      <button class="btn btn-quiet" id="rpSpeedPeak" type="button" disabled>Peak wrist speed</button>
+      <button class="btn btn-quiet" id="rpContact" type="button" disabled>Overhead reach</button>
+    </div>
+    <p class="rec-label" id="rpReachStatus"></p>
+    <button class="btn btn-quiet" id="rpRealign" type="button" hidden>Re-align tracking</button>
     <p class="rec-label">Angles and wrist speeds describe the camera image. Framing and perspective affect them. Wrist speed is shown in percent of image diagonal per second.</p>`;
   $("rpInfo").before(movement);
   let analysis = null,
@@ -132,11 +139,12 @@ export function initReplay({ onDeleted } = {}) {
       analysis.metrics.contact?.poseTimestampMs,
       phases.finish?.poseTimestampMs,
     );
+    swing ??= selectTrackedSwing(wrist, analysis.metrics.contact?.poseTimestampMs);
     arcStatus();
     const angle = analysis.metrics.contact?.elbowAngleDegrees;
-    $("rpContact").textContent = Number.isFinite(angle)
-      ? `Jump to estimated overhead reach · ${angle.toFixed(0)}° elbow angle`
-      : "Jump to estimated overhead reach";
+    $("rpReachStatus").textContent = Number.isFinite(angle)
+      ? `Estimated overhead reach · ${angle.toFixed(0)}° elbow angle.`
+      : "Overhead reach unavailable. The serving arm needs to be visible from preparation through reach.";
     $("rpWrist").textContent = wrist
       ? `Tracked wrist speed · Peak ${wrist.peak.speed.toFixed(1)}%/s · Average ${wrist.average.toFixed(1)}%/s over ${wrist.trackedSeconds.toFixed(1)} tracked seconds.`
       : "Wrist speed unavailable. A serving hand and continuous wrist tracking are needed.";
@@ -145,7 +153,7 @@ export function initReplay({ onDeleted } = {}) {
     if (calibrating || !Number.isFinite(poseMs)) return;
     video.pause();
     video.currentTime = Math.max(0, Math.min(duration(), (poseMs - offsetMs) / 1000));
-    redraw();
+    if (!video.seeking) redraw();
   }
   $("rpSpeedPeak").addEventListener("click", () => jumpTo(analysis?.metrics.wrist?.peak.t));
   $("rpContact").addEventListener("click", () =>
@@ -162,7 +170,7 @@ export function initReplay({ onDeleted } = {}) {
       mode === "full" && !swing
         ? "Full swing needs continuous tracking from preparation through the finish."
         : mode === "full"
-          ? "Diamond: highest wrist point. Circle: fastest tracked wrist movement."
+          ? `${swing.partial ? "Partial arc. Only the continuous tracked segment is shown. " : ""}Diamond: highest wrist point. Circle: fastest tracked wrist movement.`
           : "";
   }
   $("rpTrajectory").addEventListener("change", () => {
@@ -192,6 +200,7 @@ export function initReplay({ onDeleted } = {}) {
     return out;
   }
   function drawAt(tMs) {
+    if (video.seeking) return;
     if (calibrating || !video.videoWidth) {
       overlay.clear();
       return;
@@ -352,16 +361,22 @@ export function initReplay({ onDeleted } = {}) {
       if (token !== openToken) return null;
       $("rpStatus").textContent =
         `Aligning skeleton with the video… ${Math.round((n / samples.length) * 100)}%`;
-      video.currentTime = t / 1000;
-      await waitFor(video, "seeked");
-      await new Promise((r) => setTimeout(r, 100));
+      try {
+        await seekUploadVideo(video, Math.min(t / 1000, Math.max(0, duration() - 0.04)), {
+          timeoutMs: 1500,
+        });
+      } catch {
+        continue;
+      }
+      if (token !== openToken) return null;
+      const videoMs = video.currentTime * 1000;
       const p = await estimateFrame(video);
       if (!p) continue;
       used++;
       const vw = video.videoWidth,
         vh = video.videoHeight;
       offsets.forEach((o, j) => {
-        const s = poseAt(t + o, 60);
+        const s = poseAt(videoMs + o, 60);
         if (!s || !s.kp) return;
         let e = 0,
           k = 0;
@@ -447,6 +462,7 @@ export function initReplay({ onDeleted } = {}) {
     ["rpPlay", "rpSeek", "rpSkel", "rpMirror", "rpDelete"].forEach((id) => {
       $(id).disabled = !on;
     });
+    $("rpRealign").hidden = !on || clip?.source === "upload" || !frames.length;
     $("rpSpeedPeak").disabled = !on || !analysis?.metrics.wrist;
     $("rpContact").disabled = !on || !analysis?.metrics.contact;
     $("rpAngles").disabled = !on;
@@ -523,7 +539,14 @@ export function initReplay({ onDeleted } = {}) {
     $("rpWrist").textContent = "";
   }
 
+  $("rpRealign").addEventListener("click", () => {
+    wantedPoseMs = video.currentTime * 1000 + offsetMs;
+    realign = true;
+    enter();
+  });
   async function enter() {
+    const forceRealign = realign;
+    realign = false;
     const token = ++openToken;
     release();
     calibrating = false;
@@ -585,7 +608,7 @@ export function initReplay({ onDeleted } = {}) {
     if (!frames.length) {
       $("rpStatus").textContent =
         "No movement data was saved for this clip, so there is no skeleton.";
-    } else if (!clip.sync || clip.sync.offsetMs == null) {
+    } else if (forceRealign || !clip.sync || clip.sync.offsetMs == null) {
       calibrating = true;
       overlay.clear();
       let result = null;
@@ -596,7 +619,10 @@ export function initReplay({ onDeleted } = {}) {
       }
       if (token !== openToken) return;
       calibrating = false;
-      if (result) {
+      if (
+        result &&
+        (!forceRealign || result.method === "measured" || clip.sync?.method !== "measured")
+      ) {
         offsetMs = result.offsetMs;
         const sync = { ...result, measuredAt: new Date().toISOString() };
         await store.updateClip(clip.id, { sync });
@@ -607,8 +633,9 @@ export function initReplay({ onDeleted } = {}) {
             ? "Skeleton aligned with the video."
             : "Skeleton shown with standard alignment.";
       } else {
-        $("rpStatus").textContent =
-          "Skeleton shown with standard alignment (body tracking unavailable to fine-tune it).";
+        $("rpStatus").textContent = forceRealign
+          ? "Couldn’t improve alignment. Previous timing kept."
+          : "Skeleton shown with standard alignment (body tracking unavailable to fine-tune it).";
       }
       video.currentTime = 0;
       await waitFor(video, "seeked", 3000);
@@ -624,10 +651,8 @@ export function initReplay({ onDeleted } = {}) {
     startSync();
     redraw();
     if (Number.isFinite(wantedPoseMs)) {
-      video.pause();
-      video.currentTime = Math.min(duration(), Math.max(0, (wantedPoseMs - offsetMs) / 1000));
+      jumpTo(wantedPoseMs);
       wantedPoseMs = null;
-      redraw();
     }
     // Persist the same contact-local estimates shown here after pose/video alignment.
     // Legacy preference fallback remains marked in the analysis, not rewritten into capture data.

@@ -75,6 +75,25 @@ export async function openUploadVideo(video, url, options = {}) {
   }
 }
 
+/** Try alternate container labels without altering the recorded bytes. */
+export async function openUploadFile(video, file, mime, options = {}) {
+  const types = mime === "video/quicktime" ? [mime, "video/mp4"] : [mime];
+  for (const type of types) {
+    const source = file.type === type ? file : file.slice(0, file.size, type);
+    const url = URL.createObjectURL(source);
+    try {
+      await openUploadVideo(video, url, options);
+      return { url, playbackMime: type };
+    } catch (error) {
+      video.removeAttribute("src");
+      video.load();
+      URL.revokeObjectURL(url);
+      if (options.signal?.aborted || error.mediaCode !== 4 || type === types.at(-1)) throw error;
+      options.onRetry?.();
+    }
+  }
+}
+
 export async function seekUploadVideo(video, time, options = {}) {
   if (options.signal?.aborted) throw new Error("cancelled");
   video.currentTime = time;

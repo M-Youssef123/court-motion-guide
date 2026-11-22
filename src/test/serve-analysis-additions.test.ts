@@ -8,7 +8,7 @@ import {
 // @ts-expect-error static JS module
 import { coachTopic, topicAdvice } from "../../public/serve-coach/js/coach-qa.js";
 // @ts-expect-error static JS module
-import { selectSwing } from "../../public/serve-coach/js/swing-arc.js";
+import { selectSwing, selectTrackedSwing } from "../../public/serve-coach/js/swing-arc.js";
 
 describe("velocity-coloured swing", () => {
   const trajectory = [
@@ -22,6 +22,13 @@ describe("velocity-coloured swing", () => {
     const result = selectSwing({ trajectory }, 0, 110, 230);
     expect(result.apex.t).toBe(110);
     expect(result.peak.t).toBe(140);
+  });
+
+  it("marks a continuous arc as partial when phase boundaries are missing", () => {
+    expect(selectTrackedSwing({ trajectory }, 110)).toMatchObject({
+      partial: true,
+      apex: { t: 110 },
+    });
   });
 
   it("rejects a full ribbon when wrist tracking breaks around the apex", () => {

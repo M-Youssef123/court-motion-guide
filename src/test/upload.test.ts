@@ -1,8 +1,12 @@
 import { describe, it, expect, vi } from "vitest";
 // @ts-expect-error plain JS module
 import { uploadMime, uploadProblem } from "../../public/serve-coach/js/upload.js";
-// @ts-expect-error plain JS module
-import { openUploadVideo, seekUploadVideo } from "../../public/serve-coach/js/upload-media.js";
+import {
+  openUploadFile,
+  openUploadVideo,
+  seekUploadVideo,
+  // @ts-expect-error plain JS module
+} from "../../public/serve-coach/js/upload-media.js";
 describe("uploadProblem", () => {
   it("rejects non-video files", () =>
     expect(uploadProblem({ type: "image/png", size: 10 })).toMatch(/isn’t a video/));
@@ -21,6 +25,9 @@ class MediaStub extends EventTarget {
   seeking = false;
   error: object | null = null;
   load = vi.fn();
+  removeAttribute(name: string) {
+    if (name === "src") this.src = "";
+  }
   play = vi.fn<() => Promise<void>>(() => Promise.reject(new Error("Playback denied")));
   pause = vi.fn();
   metadata() {
@@ -151,4 +158,39 @@ it("normalizes MP4 and MOV types reported by file pickers", () => {
   expect(uploadMime({ type: "application/mp4" })).toBe("video/mp4");
   expect(uploadMime({ type: "video/x-m4v" })).toBe("video/mp4");
   expect(uploadMime({ type: "video/mov" })).toBe("video/quicktime");
+});
+
+it("retries QuickTime with an MP4 hint and keeps the original file bytes", async () => {
+  const video = new MediaStub();
+  const original = new File([Uint8Array.of(12, 34, 56)], "test.mov", { type: "video/quicktime" });
+  const create = vi.fn((blob: Blob) => `blob:${blob.type}`);
+  const revoke = vi.fn();
+  vi.stubGlobal(
+    "URL",
+    Object.assign(class extends URL {}, { createObjectURL: create, revokeObjectURL: revoke }),
+  );
+  try {
+    video.load.mockImplementation(() => {
+      video.readyState = 0;
+      video.error = null;
+      if (video.src === "blob:video/quicktime") video.error = { code: 4 };
+      if (video.src === "blob:video/mp4") {
+        video.metadata();
+        video.readyState = 2;
+      }
+    });
+    await expect(openUploadFile(video, original, original.type)).resolves.toEqual({
+      url: "blob:video/mp4",
+      playbackMime: "video/mp4",
+    });
+    expect(create.mock.calls.map(([blob]) => [blob.type, blob.size])).toEqual([
+      ["video/quicktime", 3],
+      ["video/mp4", 3],
+    ]);
+    expect(revoke.mock.calls).toEqual([["blob:video/quicktime"]]);
+    expect(original.name).toBe("test.mov");
+    expect(original.type).toBe("video/quicktime");
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });

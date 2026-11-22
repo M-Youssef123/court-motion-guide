@@ -60,7 +60,7 @@ export function initTraining(host) {
     <span class="lbl">Your drill</span><h3 class="sub-h"></h3><p class="dose"></p><p class="instructions"></p>
     <button class="btn btn-ball" id="doneBtn" type="button">Mark done</button>
     <p class="empty" role="status"></p>
-    </article><h3 class="sub-h">Ask your coach</h3>
+    </article><h3 class="sub-h">Ask your coach</h3><p class="kicker">Uses your saved measurements and offline coaching rules.</p>
     <form class="row"><label class="field-label">Your question
       <input class="input" name="question" type="text" maxlength="300" required placeholder="Ask about your serve">
     </label><button class="btn btn-ball" type="submit">Ask</button></form>
@@ -97,6 +97,8 @@ export function initTraining(host) {
         key,
         context?.feedback,
         context?.analysis?.metrics?.serve?.trophyHoldSeconds,
+        context?.analysis?.metrics,
+        context?.clip.ballToss,
       );
       const lines = [
         [
@@ -121,7 +123,7 @@ export function initTraining(host) {
                       comparisons: comparisonSeries(data, context?.clip.id),
                       sessionId: context?.clip.sessionId,
                     })
-                  : "Try asking about net clearance, pronation, trophy tempo, consistency, or a drill. This coach uses local tennis rules.",
+                  : "Try asking about net clearance, pronation, trophy tempo, wrist speed, toss, consistency, or a drill. This coach uses local tennis rules.",
               ],
             ]),
       ];

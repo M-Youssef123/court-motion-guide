@@ -424,7 +424,10 @@ window.addEventListener("pagehide", stopPreview);
 /* ---------- record, replay, library, practice ---------- */
 const replay = initReplay();
 const renderProgress = initSessionProgress();
-const historical = initHistoricalComparison($("coach"));
+const historical = initHistoricalComparison($("coach"), () => {
+  go("home");
+  $("upBtn").click();
+});
 const coaching = initProgressCoaching({
   openMoment: (id, poseMs, toss) => replay.openMoment(id, poseMs, toss),
 });

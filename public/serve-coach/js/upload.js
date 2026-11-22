@@ -7,7 +7,7 @@
 import * as store from "./store.js";
 import { estimateFrame } from "./pose.js";
 import { resolveServingArm } from "./contact-analysis.js";
-import { openUploadVideo, seekUploadVideo } from "./upload-media.js";
+import { openUploadFile, seekUploadVideo } from "./upload-media.js";
 
 export const MAX_UPLOAD_MB = 500;
 export const MAX_UPLOAD_SECONDS = 120;
@@ -127,41 +127,28 @@ export function initUpload({ openClip }) {
       clip = null;
     const canvas = document.createElement("canvas");
     try {
-      // MOV and MP4 share the ISO media container family. Some file pickers
-      // label supported clips QuickTime even when the browser needs an MP4 hint.
-      const types = mime === "video/quicktime" ? [mime, "video/mp4"] : [mime];
-      for (const type of types) {
-        url = URL.createObjectURL(file.type === type ? file : file.slice(0, file.size, type));
-        try {
-          await openUploadVideo(v, url, {
-            signal: controller.signal,
-            onPlaybackNeeded(play) {
-              startVideo.hidden = false;
-              startVideo.onclick = async () => {
-                try {
-                  await play();
-                } catch {
-                  if (!controller?.signal.aborted && !startVideo.hidden)
-                    show("Playback could not start. Try choosing the video from Files.", "warn");
-                }
-              };
-            },
-          });
-          playbackMime = type;
-          break;
-        } catch (error) {
-          if (!controller.signal.aborted && error.mediaCode === 4 && type !== types.at(-1)) {
-            v.removeAttribute("src");
-            v.load();
-            URL.revokeObjectURL(url);
-            url = null;
-            continue;
-          }
-          throw error;
-        } finally {
-          startVideo.hidden = true;
-          startVideo.onclick = null;
-        }
+      const resetPlaybackButton = () => {
+        startVideo.hidden = true;
+        startVideo.onclick = null;
+      };
+      try {
+        ({ url, playbackMime } = await openUploadFile(v, file, mime, {
+          signal: controller.signal,
+          onRetry: resetPlaybackButton,
+          onPlaybackNeeded(play) {
+            startVideo.hidden = false;
+            startVideo.onclick = async () => {
+              try {
+                await play();
+              } catch {
+                if (!controller?.signal.aborted && !startVideo.hidden)
+                  show("Playback could not start. Try choosing the video from Files.", "warn");
+              }
+            };
+          },
+        }));
+      } finally {
+        resetPlaybackButton();
       }
       show("");
       const dur = v.duration;

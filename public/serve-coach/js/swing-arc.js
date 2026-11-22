@@ -20,6 +20,26 @@ export function selectSwing(wrist, preparationMs, apexMs, finishMs) {
   return { samples, apex, peak };
 }
 
+/** A labelled partial arc when the wrist is visible but a phase boundary is missing. */
+export function selectTrackedSwing(wrist, apexMs) {
+  if (!wrist || !Number.isFinite(apexMs)) return null;
+  const samples = wrist.trajectory;
+  const apexIndex = samples.findIndex((point) => point.t >= apexMs);
+  if (apexIndex < 1 || Math.abs(samples[apexIndex].t - apexMs) > 100) return null;
+  let start = apexIndex;
+  let end = apexIndex;
+  while (start > 0 && samples[start].connected && samples[start - 1].t >= apexMs - 700) start--;
+  while (
+    end + 1 < samples.length &&
+    samples[end + 1].connected &&
+    samples[end + 1].t <= apexMs + 900
+  )
+    end++;
+  if (end <= apexIndex || start >= apexIndex) return null;
+  const segment = selectSwing(wrist, samples[start].t, apexMs, samples[end].t);
+  return segment && { ...segment, partial: true };
+}
+
 export function drawSwingArc(overlay, samples, { poseMs, peak, apex, trailing }) {
   const { ctx, mapping, dpr, video } = overlay;
   if (!mapping || !samples.length) return;

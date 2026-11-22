@@ -4,11 +4,12 @@ import { buildClipAnalysis } from "./practice-data.js";
 import { detectServePhases, nearestPhasePose } from "./serve-phases.js";
 import { SkeletonOverlay } from "./overlay.js";
 
-export function initHistoricalComparison(host) {
+export function initHistoricalComparison(host, chooseUpload) {
   const panel = document.createElement("details");
   panel.className = "block historical";
   panel.innerHTML = `<summary class="sec-h">Compare saved serves</summary>
     <p role="status" data-status></p>
+    <button type="button" class="btn btn-quiet" data-upload>Upload a clip to compare</button>
     <label>Playback <select class="input" data-mode><option value="independent">Independent</option><option value="start">Sync from start</option><option value="trophy">Align at estimated Trophy</option><option value="contact">Align at estimated overhead reach</option></select></label>
     <div class="historical-controls" hidden><button class="btn btn-quiet" type="button" data-play>Play both</button>
     <input type="range" min="0" max="0" step="0.01" aria-label="Scrub both clips">
@@ -30,6 +31,7 @@ export function initHistoricalComparison(host) {
   link.href = new URL("../historical-comparison.css", import.meta.url).href;
   document.head.append(link);
   const q = (selector) => panel.querySelector(selector);
+  q("[data-upload]").addEventListener("click", chooseUpload);
   const status = q("[data-status]"),
     mode = q("[data-mode]"),
     play = q("[data-play]");

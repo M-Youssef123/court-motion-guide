@@ -11,7 +11,7 @@ const STOP_ICON =
   '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
 export function initProgressCoaching({ openMoment }) {
   const host = document.getElementById("coach");
-  host.innerHTML = `<h2 class="sec-h" id="coachSecH">AI coaching insights</h2>
+  host.innerHTML = `<h2 class="sec-h" id="coachSecH">Coaching from your recording</h2>
     <label class="field-label" for="coachClip">Recording</label>
     <select class="input" id="coachClip"></select>
     <p class="kicker" id="coachSource"></p>
@@ -101,7 +101,8 @@ export function initProgressCoaching({ openMoment }) {
         !clip.restoredWithoutVideo &&
         (refresh ||
           analysis?.schemaVersion !== ANALYSIS_VERSION ||
-          analysis?.coaching?.version !== COACHING_VERSION)
+          analysis?.coaching?.version !== COACHING_VERSION ||
+          analysis?.timebase?.videoOffsetMs !== (clip.sync?.offsetMs ?? 0))
       )
         analysis = await store.finalizeClipData(id);
       else if (refresh && (await store.getClipPoses(id)).length)
@@ -149,7 +150,7 @@ export function initProgressCoaching({ openMoment }) {
             const b = document.createElement("button");
             b.className = "btn btn-quiet";
             b.type = "button";
-            b.textContent = `▶ View estimated moment · ${(e.timestampMs / 1000).toFixed(3)} s`;
+            b.textContent = `▶ Replay tracked frame · ${(e.timestampMs / 1000).toFixed(3)} s`;
             b.addEventListener("click", () => {
               stop();
               openMoment(id, e.poseTimestampMs);

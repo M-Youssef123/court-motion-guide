@@ -11,6 +11,8 @@ export function coachTopic(question) {
   const text = question.toLowerCase();
   if (/\b(net|clearance|low serve)\b/.test(text)) return "net";
   if (/pronat|forearm|wrist snap/.test(text)) return "pronation";
+  if (/\btoss\b/.test(text)) return "toss";
+  if (/\bwrist\b|hand speed/.test(text)) return "wrist";
   if (/trophy|rush|rhythm|tempo/.test(text)) return "trophy";
   if (/consisten|variat|repeat/.test(text)) return "consistency";
   if (/last time|progress|\b(?:compare|improved|changed|better)\b/.test(text)) return "improvement";
@@ -36,7 +38,27 @@ export function coachEvidence(data, clip, completionCount) {
   return `${setup}. ${history} Recent matched drill completions: ${completionCount}.`;
 }
 
-export function topicAdvice(topic, feedback, trophyHold) {
+export function topicAdvice(topic, feedback, trophyHold, metrics, toss) {
+  if (topic === "wrist") {
+    const peak = metrics?.wrist?.peak;
+    return {
+      evidence: Number.isFinite(peak?.speed)
+        ? `Peak tracked wrist speed in this clip was ${peak.speed.toFixed(1)}% of the image diagonal per second.`
+        : "This clip needs a visible serving wrist across consecutive frames.",
+      advice:
+        "Use Peak wrist speed in Replay. Compare the same serving motion from the same tripod position and distance.",
+    };
+  }
+  if (topic === "toss")
+    return {
+      evidence:
+        Number.isFinite(toss?.heightAboveHeadPct) && Number.isFinite(toss?.driftFromHeadPct)
+          ? `The detected toss apex was ${toss.heightAboveHeadPct.toFixed(1)}% of frame height above your head, with ${Math.abs(toss.driftFromHeadPct).toFixed(1)}% of frame width in horizontal drift.`
+          : "This recording has no usable ball-toss scan yet.",
+      advice:
+        "Film three tosses from the same marked position. Leave room above your head for the apex, then use Scan toss under Toss consistency.",
+    };
+
   if (topic === "net")
     return {
       evidence:
