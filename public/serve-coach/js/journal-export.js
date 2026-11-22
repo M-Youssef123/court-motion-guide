@@ -14,68 +14,36 @@ export function initJournalExport() {
   const button = section.querySelector("button"),
     label = button.querySelector("span"),
     status = section.querySelector('[role="status"]');
-  let ready = null,
-    busy = false;
-  const reset = () => {
-    if (!busy) {
-      ready = null;
-      label.textContent = "Export Journal (.md)";
-      status.textContent = "";
-    }
-  };
-  window.addEventListener("hashchange", reset);
-  // Notes can be edited after preparation without changing the page.
-  document.getElementById("noteForm").addEventListener("submit", reset);
-  document.getElementById("notes").addEventListener("click", reset);
-  window.addEventListener("practice-notes-changed", reset);
+  let busy = false;
   button.addEventListener("click", () => {
     if (busy) return;
     busy = true;
     button.disabled = true;
     button.setAttribute("aria-busy", "true");
-    if (ready) {
-      // Directly inside this tap: no database await before native sharing on iOS.
-      label.textContent = "Saving…";
-      saveVideo(ready.blob, ready.filename)
-        .then((result) => {
-          status.textContent =
-            result === "cancelled"
-              ? "Sharing cancelled. Your journal is still ready."
-              : result === "shared"
-                ? "Journal shared ✓"
-                : "Journal download started ✓";
-          if (result !== "cancelled") ready = null;
-        })
-        .catch(() => {
-          status.textContent = "Couldn’t save the journal. Please try again.";
-        })
-        .finally(() => {
-          busy = false;
-          button.disabled = false;
-          button.setAttribute("aria-busy", "false");
-          label.textContent = ready ? "Download Journal (.md)" : "Export Journal (.md)";
-        });
-      return;
-    }
     label.textContent = "Exporting…";
     status.textContent = "";
     getJournalData()
       .then((data) => {
         const date = new Date();
-        ready = {
-          blob: new Blob([buildJournal(data, date)], { type: "text/markdown;charset=utf-8" }),
-          filename: journalFilename(date),
-        };
-        status.textContent = "Journal ready. Tap Download Journal to save or share it.";
+        const blob = new Blob([buildJournal(data, date)], { type: "text/markdown;charset=utf-8" });
+        return saveVideo(blob, journalFilename(date));
+      })
+      .then((result) => {
+        status.textContent =
+          result === "cancelled"
+            ? "Sharing cancelled."
+            : result === "shared"
+              ? "Journal shared ✓"
+              : "Journal download started ✓";
       })
       .catch(() => {
-        status.textContent = "Couldn’t read your saved practices. Please try again.";
+        status.textContent = "Couldn’t save the journal. Please try again.";
       })
       .finally(() => {
         busy = false;
         button.disabled = false;
         button.setAttribute("aria-busy", "false");
-        label.textContent = ready ? "Download Journal (.md)" : "Export Journal (.md)";
+        label.textContent = "Export Journal (.md)";
       });
   });
 }
