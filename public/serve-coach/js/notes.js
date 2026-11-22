@@ -125,8 +125,7 @@ export function initNotes() {
         list.append(li);
       });
       $("notesEmpty").hidden = notes.length > 0;
-      if (!sessions.length && !editing)
-        message("Start a practice or upload a video to add session notes.");
+      if (!sessions.length && !editing) message("Start a practice to add notes for that session.");
       lock(busy);
     } catch (e) {
       save.disabled = true;

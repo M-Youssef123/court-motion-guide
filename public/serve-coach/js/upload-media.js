@@ -124,9 +124,19 @@ export async function openUploadFile(video, file, mime, options = {}) {
   }
 }
 
+/** Also succeeds when metadata arrived before listeners were attached. */
+export function waitForVideoMetadata(video, { signal, timeoutMs = 8000 } = {}) {
+  return waitForMedia(
+    video,
+    () => video.readyState >= 1 && video.videoWidth > 0 && video.videoHeight > 0,
+    ["loadedmetadata", "loadeddata", "canplay"],
+    { signal, timeoutMs, message: "This recording couldn’t be opened." },
+  );
+}
+
 export async function seekUploadVideo(video, time, options = {}) {
   if (options.signal?.aborted) throw new Error("cancelled");
-  video.currentTime = time;
+  if (Math.abs(video.currentTime - time) > 0.001) video.currentTime = time;
   await waitForMedia(
     video,
     () => !video.seeking && video.readyState >= 2 && Math.abs(video.currentTime - time) < 0.02,
@@ -134,8 +144,9 @@ export async function seekUploadVideo(video, time, options = {}) {
     {
       ...options,
       timeoutMs: options.timeoutMs ?? 10000,
-      message: "The browser could not read this frame.",
-      timeoutMessage: "The browser stopped decoding frames during analysis. Try a shorter copy.",
+      message: options.message ?? "The browser could not read this frame.",
+      timeoutMessage:
+        options.timeoutMessage ?? "The browser stopped decoding frames during analysis.",
     },
   );
 }

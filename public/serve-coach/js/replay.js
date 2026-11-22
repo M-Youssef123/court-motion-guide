@@ -27,7 +27,7 @@ import { buildClipAnalysis } from "./practice-data.js";
 import { wristTrailSamples, drawSwingArc } from "./swing-arc.js";
 import { replayWristSummary } from "./replay-metrics.js";
 
-import { seekUploadVideo } from "./upload-media.js";
+import { seekUploadVideo, waitForVideoMetadata } from "./upload-media.js";
 
 const $ = (id) => document.getElementById(id);
 const fmtTime = (s) => {
@@ -50,29 +50,6 @@ export function defaultOffsetMs() {
   if (/Android/.test(ua)) return -350;
   if (/Chrome/.test(ua)) return -440;
   return 0;
-}
-
-function waitFor(el, ev, ms = 6000) {
-  return new Promise((resolve) => {
-    let done = false;
-    const t = setTimeout(() => {
-      if (!done) {
-        done = true;
-        resolve(false);
-      }
-    }, ms);
-    el.addEventListener(
-      ev,
-      () => {
-        if (!done) {
-          done = true;
-          clearTimeout(t);
-          resolve(true);
-        }
-      },
-      { once: true },
-    );
-  });
 }
 
 export function initReplay({ onDeleted } = {}) {
@@ -140,19 +117,22 @@ export function initReplay({ onDeleted } = {}) {
       faster: "Faster than this clip’s average",
       "much-faster": "Much faster than this clip’s average",
     };
-    $("rpWrist").textContent = summary.kind === "estimated-speed"
-      ? `~${summary.mph.toFixed(1)} mph`
-      : "Speed estimate unavailable";
-    $("rpWristContext").textContent = summary.kind === "estimated-speed"
-      ? "At estimated overhead reach"
-      : summary.kind === "relative-motion"
-        ? `Peak wrist movement: ${bands[summary.band]}. Tracking does not support an mph estimate.`
-        : "Continuous serving-wrist and torso tracking are needed.";
-    $("rpWristNote").textContent = summary.kind === "estimated-speed"
-      ? "Approximate 2D wrist estimate using an assumed 0.50 m torso. Not measured racket or ball speed; overhead reach is not verified ball contact."
-      : summary.kind === "relative-motion"
-        ? "Relative movement within this recording only—not physical speed, acceleration or a skill rating."
-        : "";
+    $("rpWrist").textContent =
+      summary.kind === "estimated-speed"
+        ? `~${summary.mph.toFixed(1)} mph`
+        : "Speed estimate unavailable";
+    $("rpWristContext").textContent =
+      summary.kind === "estimated-speed"
+        ? "At estimated overhead reach"
+        : summary.kind === "relative-motion"
+          ? `Peak wrist movement: ${bands[summary.band]}. Tracking does not support an mph estimate.`
+          : "Continuous serving-wrist and torso tracking are needed.";
+    $("rpWristNote").textContent =
+      summary.kind === "estimated-speed"
+        ? "Approximate 2D wrist estimate using an assumed 0.50 m torso. Not measured racket or ball speed; overhead reach is not verified ball contact."
+        : summary.kind === "relative-motion"
+          ? "Relative movement within this recording only—not physical speed, acceleration or a skill rating."
+          : "";
   }
   function jumpTo(poseMs) {
     if (calibrating || !Number.isFinite(poseMs)) return;
@@ -225,7 +205,10 @@ export function initReplay({ onDeleted } = {}) {
     if (tossOn) drawTossTrack(overlay, clip?.ballToss);
     const wrist = analysis?.metrics.wrist;
     if (trailOn && wrist) {
-      drawSwingArc(overlay, wristTrailSamples(wrist.trajectory, poseMs), { poseMs, peak: wrist.peak });
+      drawSwingArc(overlay, wristTrailSamples(wrist.trajectory, poseMs), {
+        poseMs,
+        peak: wrist.peak,
+      });
     }
   }
   function startSync() {
@@ -354,6 +337,7 @@ export function initReplay({ onDeleted } = {}) {
       try {
         await seekUploadVideo(video, Math.min(t / 1000, Math.max(0, duration() - 0.04)), {
           timeoutMs: 1500,
+          signal: mediaController.signal,
         });
       } catch {
         continue;
@@ -434,11 +418,7 @@ export function initReplay({ onDeleted } = {}) {
         if (token !== openToken) return;
         if (r === "cancelled") setSave("note", "Not saved. Tap Save video to try again.");
         else if (r === "shared")
-          setSave(
-            "done",
-            "Video handed to the share sheet. Check the destination you selected.",
-            "ok",
-          );
+          setSave("done", "Check Photos or Files for your saved video.", "ok");
         else setSave("done", `Downloading ${name}`, "ok");
       })
       .catch(() => {
@@ -509,7 +489,9 @@ export function initReplay({ onDeleted } = {}) {
     });
   }
 
+  let mediaController;
   function release() {
+    mediaController?.abort();
     syncId++;
     video.pause();
     video.removeAttribute("src");
@@ -541,6 +523,7 @@ export function initReplay({ onDeleted } = {}) {
     realign = false;
     const token = ++openToken;
     release();
+    const { signal } = (mediaController = new AbortController());
     calibrating = false;
     setControls(false);
     $("rpStatus").textContent = "Loading clip…";
@@ -589,14 +572,17 @@ export function initReplay({ onDeleted } = {}) {
     mirrorOn = !!(clip.camera && clip.camera.facing === "user");
     $("rpMirror").setAttribute("aria-pressed", String(mirrorOn));
     $("rpBox").classList.toggle("mirror", mirrorOn);
-    const ok = await waitFor(video, "loadedmetadata", 8000);
-    if (token !== openToken) return;
-    if (!ok) {
-      $("rpStatus").textContent = "This video couldn’t be opened on this browser.";
+    try {
+      await waitForVideoMetadata(video, { signal });
+    } catch {
+      if (token !== openToken) return;
+      $("rpStatus").textContent =
+        "This video couldn’t play here. You can still try saving it to your phone.";
       $("rpStatus").dataset.kind = "error";
       $("rpDelete").disabled = false;
       return;
     }
+    if (token !== openToken) return;
 
     offsetMs = clip.sync && clip.sync.offsetMs != null ? clip.sync.offsetMs : defaultOffsetMs();
     if (!frames.length) {
@@ -632,8 +618,7 @@ export function initReplay({ onDeleted } = {}) {
           ? "Couldn’t improve alignment. Previous timing kept."
           : "Skeleton shown with standard alignment (body tracking unavailable to fine-tune it).";
       }
-      video.currentTime = 0;
-      await waitFor(video, "seeked", 3000);
+      await seekUploadVideo(video, 0, { signal, timeoutMs: 1500 }).catch(() => {});
     } else {
       $("rpStatus").textContent = clip.uploadAnalysisIncomplete
         ? "Video saved. Tracking covers only the frames the phone could analyse."

@@ -60,7 +60,7 @@ export function initTraining(host) {
     <span class="lbl">Your drill</span><h3 class="sub-h"></h3><p class="dose"></p><p class="instructions"></p>
     <button class="btn btn-ball" id="doneBtn" type="button">Mark done</button>
     <p class="empty" role="status"></p>
-    </article><h3 class="sub-h">Coach topics</h3><p class="kicker">Pick a topic for proven serve tips, causes and a drill to try.</p>
+    </article><h3 class="sub-h">Coach topics</h3><p class="kicker">General serve tips and drills. Open a recording under You and your coach to review your own frames.</p>
     <div class="qs" role="group" aria-label="Coach topics"></div><div class="answer" role="status" hidden></div>`;
   host.append(section);
   const article = section.querySelector("article");
@@ -103,12 +103,11 @@ export function initTraining(host) {
     questionControls.push(button);
     section.querySelector(".qs").append(button);
     button.addEventListener("click", () => {
-      for (const other of questionControls) other.setAttribute("aria-pressed", String(other === button));
+      for (const other of questionControls)
+        other.setAttribute("aria-pressed", String(other === button));
       answer(key);
     });
   }
-
-
 
   done.addEventListener("click", async () => {
     const context = current;

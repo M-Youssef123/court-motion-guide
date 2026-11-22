@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 // @ts-expect-error plain JS module
-import { seekUploadVideo } from "../../public/serve-coach/js/upload-media.js";
+import { seekUploadVideo, waitForVideoMetadata } from "../../public/serve-coach/js/upload-media.js";
 class MediaStub extends EventTarget {
   src = "";
   readyState = 0;
@@ -56,3 +56,26 @@ describe("replay frame seeking", () => {
   });
 });
 
+describe("replay metadata", () => {
+  it("opens a cached video without another metadata event", async () => {
+    const video = new MediaStub();
+    video.metadata();
+    await expect(waitForVideoMetadata(video)).resolves.toBeUndefined();
+  });
+
+  it("cancels pending video access when leaving the screen", async () => {
+    const video = new MediaStub();
+    const controller = new AbortController();
+    const pending = waitForVideoMetadata(video, { signal: controller.signal });
+    controller.abort();
+    await expect(pending).rejects.toThrow("cancelled");
+  });
+
+  it("fails promptly when a recording is unreadable", async () => {
+    const video = new MediaStub();
+    const pending = waitForVideoMetadata(video);
+    video.error = { code: 4 };
+    video.dispatchEvent(new Event("error"));
+    await expect(pending).rejects.toThrow("recording couldn’t be opened");
+  });
+});

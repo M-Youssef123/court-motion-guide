@@ -24,6 +24,11 @@ it("routes the actual static app to Progress and wires coach and backup controls
     expect(document.querySelector("#progress")?.hasAttribute("hidden")).toBe(false),
   );
   expect(document.querySelector("#sessions")).toBeNull();
+  expect(document.querySelector("#libEmpty a")?.getAttribute("href")).toBe("#practice");
+  await vi.waitFor(() =>
+    expect(document.querySelector("#libEmpty")?.hasAttribute("hidden")).toBe(true),
+  );
+  expect(document.querySelector("#coach")?.textContent).toContain("General serve tips and drills");
   expect(document.querySelector("#backupImport")?.textContent).toBe("Restore JSON backup");
   const question = [...document.querySelectorAll("button")].find(
     (b) => b.textContent === "Why is my serve hitting the net?",
@@ -39,7 +44,9 @@ it("routes the actual static app to Progress and wires coach and backup controls
     .find((b) => b.textContent === "Am I rushing my trophy pose?")
     ?.click();
   await vi.waitFor(() =>
-    expect(document.querySelector("#coach .answer")?.textContent).toContain("down together, up together"),
+    expect(document.querySelector("#coach .answer")?.textContent).toContain(
+      "down together, up together",
+    ),
   );
   expect(document.querySelector("#coach")?.textContent).not.toContain("Toss consistency");
   expect(document.querySelector("#progress")?.textContent).not.toContain("Your toss stayed put");

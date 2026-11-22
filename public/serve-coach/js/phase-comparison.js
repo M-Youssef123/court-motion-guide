@@ -10,26 +10,8 @@ import {
   PHASE_VERSION,
 } from "./serve-phases.js";
 
-function waitFor(video, event) {
-  return new Promise((resolve, reject) => {
-    const clean = () => {
-      clearTimeout(timer);
-      video.removeEventListener(event, ok);
-      video.removeEventListener("error", bad);
-    };
-    const ok = () => {
-        clean();
-        resolve();
-      },
-      bad = () => {
-        clean();
-        reject(new Error("Video unavailable"));
-      };
-    const timer = setTimeout(bad, 8000);
-    video.addEventListener(event, ok, { once: true });
-    video.addEventListener("error", bad, { once: true });
-  });
-}
+import { seekUploadVideo, waitForVideoMetadata } from "./upload-media.js";
+
 export function initPhaseComparison(host) {
   const link = document.createElement("link");
   link.rel = "stylesheet";
@@ -85,7 +67,9 @@ export function initPhaseComparison(host) {
       `Original ${arm}-handed ${phaseName().toLowerCase()} position illustration`;
     $("phaseUse").textContent = `Use this frame for ${phaseName()}`;
   }
+  let mediaController;
   function clear() {
+    mediaController?.abort();
     loadToken++;
     paintToken++;
     ready = false;
@@ -141,14 +125,14 @@ export function initPhaseComparison(host) {
       .then(async () => {
         if (request !== paintToken || generation !== loadToken || !ready) return;
         try {
-          const seconds = ms / 1000;
-          if (Math.abs(video.currentTime - seconds) > 0.001) {
-            const seek = waitFor(video, "seeked");
-            video.currentTime = seconds;
-            await seek;
-          }
-          if (video.readyState < 2) await waitFor(video, "loadeddata");
+          await seekUploadVideo(video, ms / 1000, {
+            signal: mediaController.signal,
+            timeoutMs: 8000,
+          });
           if (request !== paintToken || generation !== loadToken) return;
+          previewMs = video.currentTime * 1000;
+          $("phaseSeek").value = String(video.currentTime);
+          $("phaseSeekTime").textContent = video.currentTime.toFixed(3) + " s";
           canvas.width = video.videoWidth;
           canvas.height = video.videoHeight;
           ctx.drawImage(video, 0, 0);
@@ -316,6 +300,7 @@ export function initPhaseComparison(host) {
   });
   async function load(recording) {
     clear();
+    const { signal } = (mediaController = new AbortController());
     clip = recording;
     reference();
     if (recording.restoredWithoutVideo) {
@@ -336,9 +321,8 @@ export function initPhaseComparison(host) {
       offsetMs = clip.sync?.offsetMs ?? defaultOffsetMs();
       automatic = detectServePhases(frames, clip, offsetMs);
       url = URL.createObjectURL(blob);
-      const metadata = waitFor(video, "loadedmetadata");
       video.src = url;
-      await metadata;
+      await waitForVideoMetadata(video, { signal });
       if (generation !== loadToken) return;
       const length = Number.isFinite(video.duration)
         ? video.duration * 1000

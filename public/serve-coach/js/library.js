@@ -29,7 +29,17 @@ export function initLibrary({ openClip, onDeleted }) {
 
   async function render() {
     const my = ++token;
-    const [sessions, st] = await Promise.all([store.listSessions(), store.storageStatus()]);
+    let sessions, st;
+    try {
+      [sessions, st] = await Promise.all([store.listSessions(), store.storageStatus()]);
+    } catch {
+      if (my === token) {
+        $("libEmpty").hidden = true;
+        $("libStorage").textContent =
+          "Couldn’t read saved recordings. Reopen Progress to try again.";
+      }
+      return;
+    }
     if (my !== token) return;
     const list = $("libList");
     list.innerHTML = "";
@@ -59,7 +69,7 @@ export function initLibrary({ openClip, onDeleted }) {
     bar.append(b, msg);
     let blob = null,
       timer = null;
-    const label = "Download video";
+    const label = "Save video";
     store
       .getClipVideo(c)
       .then((r) => {
@@ -91,9 +101,7 @@ export function initLibrary({ openClip, onDeleted }) {
           b.disabled = false;
           b.textContent = label;
           if (r === "cancelled") msg.textContent = "Not saved";
-          else if (r === "shared")
-            msg.textContent =
-              "Video handed to the share sheet. Check the destination you selected.";
+          else if (r === "shared") msg.textContent = "Check Photos or Files for your saved video.";
           else msg.textContent = `Downloading ${name}`;
           reset();
         })
