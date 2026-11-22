@@ -16,13 +16,15 @@
  */
 
 import * as store from './store.js';
-import { SkeletonOverlay, toScreen } from './overlay.js';
+import { SkeletonOverlay } from './overlay.js';
 import { estimateFrame } from './pose.js';
 import { tripodName, orientationName } from './labels.js';
 import { saveVideo, clipFilename } from './save-video.js';
 import { resolveServingArm } from './contact-analysis.js';
 
 import { buildClipAnalysis } from './practice-data.js';
+import { detectServePhases } from './serve-phases.js';
+import { selectSwing, drawSwingArc } from './swing-arc.js';
 
 const $ = (id) => document.getElementById(id);
 const fmtTime = (s) => { s = Math.max(0, Math.floor(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
@@ -66,15 +68,16 @@ export function initReplay({ onDeleted } = {}) {
   movement.innerHTML = `<h2 class="sec-h">Movement in replay</h2>
     <div class="rp-toggles">
       <button class="rp-tog" id="rpAngles" type="button" aria-pressed="false" disabled>2D angles</button>
-      <button class="rp-tog" id="rpTrajectory" type="button" aria-pressed="false" disabled>Wrist trail</button>
+      <label>Trajectory arc <select class="input" id="rpTrajectory" disabled><option value="none">None</option><option value="trail">Trailing 300 ms</option><option value="full">Full swing</option></select></label>
     </div>
     <p class="rec-label" id="rpMeasurements"></p>
     <p class="rec-label" id="rpWrist"></p>
+    <p class="rec-label" id="rpArcStatus" role="status"></p>
     <button class="btn btn-quiet" id="rpSpeedPeak" type="button" disabled>Jump to peak wrist movement</button>
     <button class="btn btn-quiet" id="rpContact" type="button" disabled>Jump to estimated overhead reach</button>
     <p class="rec-label">Angles and wrist speeds describe the camera image. Framing and perspective affect them. Wrist speed is shown in percent of image diagonal per second.</p>`;
   $('rpInfo').before(movement);
-  let analysis = null, anglesOn = false, trajectoryOn = false;
+  let analysis = null, anglesOn = false, swing = null;
   const measurement = $('rpMeasurements');
   $('rpBox').append(measurement);
   measurement.classList.add('rp-measurements');
@@ -82,6 +85,9 @@ export function initReplay({ onDeleted } = {}) {
   function paintSpeed() {
     analysis = buildClipAnalysis(clip, frames, { arm: selectedArm, offsetMs });
     const wrist = analysis.metrics.wrist;
+    const phases = detectServePhases(frames, { ...clip, dominantHand: selectedArm, servingArm: selectedArm }, offsetMs);
+    swing = selectSwing(wrist, phases.trophy?.poseTimestampMs, analysis.metrics.contact?.poseTimestampMs, phases.finish?.poseTimestampMs);
+    arcStatus();
     const angle = analysis.metrics.contact?.elbowAngleDegrees;
     $('rpContact').textContent = Number.isFinite(angle)
       ? `Jump to estimated overhead reach · ${angle.toFixed(0)}° elbow angle` : 'Jump to estimated overhead reach';
@@ -102,11 +108,13 @@ export function initReplay({ onDeleted } = {}) {
     $('rpAngles').setAttribute('aria-pressed', String(anglesOn));
     redraw();
   });
-  $('rpTrajectory').addEventListener('click', () => {
-    trajectoryOn = !trajectoryOn;
-    $('rpTrajectory').setAttribute('aria-pressed', String(trajectoryOn));
-    redraw();
-  });
+  function arcStatus() {
+    const mode = $('rpTrajectory').value;
+    $('rpArcStatus').textContent = mode === 'full' && !swing
+      ? 'Full swing needs continuous tracking from preparation through the finish.'
+      : mode === 'full' ? 'Diamond: highest wrist point. Circle: fastest tracked wrist movement.' : '';
+  }
+  $('rpTrajectory').addEventListener('change', () => { arcStatus(); redraw(); });
 
   /* ---------- pose lookup and drawing ---------- */
   function poseAt(tMs, maxGap = 250, source = frames) {
@@ -128,36 +136,20 @@ export function initReplay({ onDeleted } = {}) {
     const f = poseAt(poseMs);
     overlay.draw(skeletonOn && f?.kp ? toVideoPx(f.kp) : null);
     const m = anglesOn && poseAt(poseMs, 110, analysis?.frames || []);
-    const values = [m?.jointAngles?.leftKnee, m?.jointAngles?.rightKnee,
-      m?.jointAngles?.leftElbow, m?.jointAngles?.rightElbow, m?.shoulderTilt, m?.bodyLean];
+    const jointAngles = m?.smoothedJointAngles;
+    const values = [jointAngles?.leftKnee, jointAngles?.rightKnee,
+      jointAngles?.leftElbow, jointAngles?.rightElbow, m?.shoulderTilt, m?.bodyLean];
     const labels = ['L knee', 'R knee', 'L elbow', 'R elbow', 'Shoulder tilt', 'Body lean'];
     measurement.hidden = !anglesOn;
     const reading = values.flatMap((v, i) => Number.isFinite(v) ? [`${labels[i]} ${v.toFixed(0)}°`] : []).join(' · ');
     const display = reading || '2D angles unavailable here';
     if (anglesOn && measurement.textContent !== display) measurement.textContent = display;
-    const wrist = analysis?.metrics.wrist;
-    if (!trajectoryOn || !wrist || !overlay.mapping) return;
-    const { ctx, mapping, dpr } = overlay;
-    const screen = (p) => toScreen(mapping, { x: p.x * video.videoWidth, y: p.y * video.videoHeight });
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = '#D8F23A';
-    ctx.beginPath();
-    let previous = null;
-    for (const sample of wrist.trajectory) {
-      if (sample.t < poseMs - 800) continue;
-      if (sample.t > poseMs + 20) break;
-      const p = screen(sample);
-      if (sample.connected && previous) ctx.lineTo(p.x, p.y);
-      else ctx.moveTo(p.x, p.y);
-      previous = p;
-    }
-    ctx.stroke();
-    if (Math.abs(poseMs - wrist.peak.t) <= 100) {
-      const peak = screen(wrist.peak);
-      ctx.beginPath();
-      ctx.arc(peak.x, peak.y, 7, 0, Math.PI * 2);
-      ctx.stroke();
+    const wrist = analysis?.metrics.wrist, mode = $('rpTrajectory').value;
+    if (mode === 'trail' && wrist) {
+      const samples = wrist.trajectory.filter(p => p.t >= poseMs - 300 && p.t <= poseMs);
+      drawSwingArc(overlay, samples, { poseMs, peak: wrist.peak, trailing: true });
+    } else if (mode === 'full' && swing) {
+      drawSwingArc(overlay, swing.samples, { poseMs, peak: swing.peak, apex: swing.apex });
     }
   }
   function startSync() {
@@ -263,19 +255,23 @@ export function initReplay({ onDeleted } = {}) {
     clearTimeout(saveTimer);
     b.disabled = state === 'idle' || state === 'busy';
     b.setAttribute('aria-busy', String(state === 'busy'));
-    $('rpSaveL').textContent = state === 'busy' ? 'Preparing video…' : state === 'done' ? 'Saved ✓' : 'Save video';
+    $('rpSaveL').textContent = state === 'busy' ? 'Preparing video…' : 'Save video';
     $('rpSaveMsg').textContent = msg; $('rpSaveMsg').dataset.kind = kind;
     if (state === 'done' || state === 'note') saveTimer = setTimeout(() => setSave(clipBlob ? 'ready' : 'idle'), 5000);
   }
   $('rpSave').addEventListener('click', () => {
     if (!clipBlob || !clip) return;
     const name = clipFilename(new Date(clip.createdAt), clipBlob.type || (clip.video && clip.video.mime));
+    const token = openToken;
     setSave('busy');
     saveVideo(clipBlob, name).then((r) => {
+      if (token !== openToken) return;
       if (r === 'cancelled') setSave('note', 'Not saved. Tap Save video to try again.');
-      else if (r === 'shared') setSave('done', 'Tap “Save Video” in the menu to keep it in Photos.', 'ok');
+      else if (r === 'shared') setSave('done', 'Video handed to the share sheet. Check the destination you selected.', 'ok');
       else setSave('done', `Downloading ${name}`, 'ok');
-    }).catch(() => setSave('ready', 'Couldn’t save this video. Please try again.', 'error'));
+    }).catch(() => {
+      if (token === openToken) setSave('ready', 'Couldn’t save this video. Please try again.', 'error');
+    });
   });
 
   /* ---------- open / close ---------- */
@@ -317,6 +313,8 @@ export function initReplay({ onDeleted } = {}) {
     url = null; overlay.clear();
     clipBlob = null; setSave('idle');
     analysis = null;
+    swing = null;
+    $('rpArcStatus').textContent = '';
     selectedArm = null;
     measurement.hidden = true;
     $('rpWrist').textContent = '';

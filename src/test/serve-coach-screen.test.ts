@@ -25,5 +25,14 @@ it('routes the actual static app to Progress and wires coach and backup controls
   const question = [...document.querySelectorAll('button')].find(b => b.textContent === 'What do you see in my technique?');
   question?.click();
   await vi.waitFor(() => expect(document.querySelector('#coach .answer')?.textContent).toMatch(/insufficient/));
+  const input = document.querySelector<HTMLInputElement>('#coach input[name="question"]');
+  expect(input).toBeInstanceOf(HTMLInputElement);
+  input!.value = 'Am I rushing my trophy pose?';
+  input!.form!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  await vi.waitFor(() => expect(document.querySelector('#coach .answer')?.textContent).toContain('trophy hold'));
+  const historical = document.querySelector<HTMLDetailsElement>('.historical');
+  historical!.open = true;
+  await vi.waitFor(() => expect(historical?.textContent).toContain('Save two clips'));
+  expect(document.querySelector('#coach')?.textContent).toContain('Toss consistency');
   expect(document.querySelector('#progress')?.textContent).not.toContain('Your toss stayed put');
 });

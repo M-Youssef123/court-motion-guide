@@ -28,9 +28,17 @@ export function smoothMovement(frames) {
   });
 }
 
-export function bodyOrientation(frame, width, height) {
+export function bodyOrientation(frame, width, height, arm) {
   const [left, right, leftHip, rightHip] = [5, 6, 11, 12].map((i) => point(frame, i));
-  const result = { shoulderTilt: null, bodyLean: null };
+  const result = { shoulderTilt: null, bodyLean: null, armExtension: null };
+  if (width > 0 && height > 0 && ['left', 'right'].includes(arm)) {
+    const [shoulder, elbow, wrist] = (arm === 'left' ? [5, 7, 9] : [6, 8, 10]).map(i => point(frame, i));
+    const distance = (a, b) => Math.hypot((a.x - b.x) * width, (a.y - b.y) * height);
+    if (shoulder && elbow && wrist) {
+      const length = distance(shoulder, elbow) + distance(elbow, wrist);
+      if (length > 0) result.armExtension = Math.min(1, distance(shoulder, wrist) / length);
+    }
+  }
   if (!left || !right || !(width > 0 && height > 0)) return result;
   const dx = Math.abs((left.x - right.x) * width);
   const dy = Math.abs((left.y - right.y) * height);
@@ -60,6 +68,7 @@ export function wristMotion(frames, { width, height, arm } = {}) {
     if (connected) {
       const traveled = Math.hypot((sample.x - previous.x) * width, (sample.y - previous.y) * height) * 100 / diagonal;
       const speed = traveled / (dt / 1000);
+      sample.speed = speed;
       distance += traveled;
       seconds += dt / 1000;
       segments++;
@@ -69,4 +78,20 @@ export function wristMotion(frames, { width, height, arm } = {}) {
   }
   if (segments < 2) return null;
   return { trajectory, peak, average: distance / seconds, trackedSeconds: seconds, segments };
+}
+
+export function jointAngle(kp, indices, width, height) {
+  if (!Array.isArray(kp) || !(width > 0) || !(height > 0)) return null;
+  const points = indices.map((index) => {
+    const x = kp[index * 3], y = kp[index * 3 + 1], score = kp[index * 3 + 2];
+    return Number.isFinite(x) && x >= 0 && x <= 1 && Number.isFinite(y) && y >= 0 && y <= 1
+      && Number.isFinite(score) && score >= MIN_SCORE && score <= 1
+      ? { x: x * width, y: y * height } : null;
+  });
+  const [a, b, c] = points;
+  if (!a || !b || !c) return null;
+  const ux = a.x - b.x, uy = a.y - b.y, vx = c.x - b.x, vy = c.y - b.y;
+  const length = Math.hypot(ux, uy) * Math.hypot(vx, vy);
+  if (!length || !Number.isFinite(length)) return null;
+  return Math.acos(Math.max(-1, Math.min(1, (ux * vx + uy * vy) / length))) * 180 / Math.PI;
 }

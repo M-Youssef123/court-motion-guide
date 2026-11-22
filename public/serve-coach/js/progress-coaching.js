@@ -1,7 +1,9 @@
 import * as store from './store.js';
+import { ANALYSIS_VERSION } from './practice-data.js';
 import { COACHING_VERSION } from './coaching-insights.js';
 import { initTraining } from './training.js';
 import { initPhaseComparison } from './phase-comparison.js';
+import { initTossProgress } from './toss-progress.js';
 
 const HEAR_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/></svg>';
 const STOP_ICON = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
@@ -11,14 +13,17 @@ export function initProgressCoaching({ openMoment }) {
     <label class="field-label" for="coachClip">Recording</label>
     <select class="input" id="coachClip"></select>
     <p class="kicker" id="coachSource"></p>
+    <button class="btn btn-quiet" type="button" id="coachReanalyse" disabled>Reanalyse saved tracking</button>
     <p class="empty" id="coachStatus" role="status" aria-live="polite"></p>
     <div class="block" id="coachBody"></div>
     <button class="btn btn-quiet" type="button" id="hearBtn" disabled aria-pressed="false">${HEAR_ICON}Hear it</button>
-    <p class="kicker">Observations are estimates from body tracking in this camera view. Ball accuracy, ball impact and measured racket speed cannot be determined.</p>`;
+    <p class="kicker">Coaching uses provisional thresholds for 2D body tracking in this camera view.</p>`;
   const comparison = initPhaseComparison(host);
   const renderTraining = initTraining(host);
+  const renderToss = initTossProgress(host, openMoment);
   const select = document.getElementById('coachClip'), body = document.getElementById('coachBody');
   const status = document.getElementById('coachStatus'), hear = document.getElementById('hearBtn');
+  const reanalyse = document.getElementById('coachReanalyse');
   let selected = null, text = '', utterance = null, token = 0;
   function reset() { utterance = null; hear.innerHTML = HEAR_ICON + 'Hear it'; hear.setAttribute('aria-pressed', 'false'); }
   function stop() { const speaking = utterance; reset(); if (speaking) { try { window.speechSynthesis.cancel(); } catch {} } }
@@ -36,20 +41,28 @@ export function initProgressCoaching({ openMoment }) {
   });
   window.addEventListener('pagehide', stop);
   window.addEventListener('hashchange', () => { if (location.hash !== '#progress') { token++; stop(); } });
-  async function load(id) {
+  async function load(id, refresh = false) {
     const request = ++token; stop(); text = ''; hear.disabled = true; body.replaceChildren();
     comparison.clear();
+    renderToss(null);
+    reanalyse.disabled = true;
     renderTraining();
     status.textContent = 'Reading saved movement data…'; selected = id;
     try {
       const clip = await store.getClip(id);
       if (!clip || clip.deletedAt) throw new Error('missing');
       let analysis = await store.getClipAnalysis(id);
-      if (analysis?.coaching?.version !== COACHING_VERSION) analysis = await store.finalizeClipData(id);
+      if (!clip.restoredWithoutVideo && (refresh || analysis?.schemaVersion !== ANALYSIS_VERSION
+        || analysis?.coaching?.version !== COACHING_VERSION)) analysis = await store.finalizeClipData(id);
+      else if (refresh && (await store.getClipPoses(id)).length) analysis = await store.finalizeClipData(id);
       if (request !== token) return;
+      const canReanalyse = !clip.restoredWithoutVideo || (await store.getClipPoses(id)).length > 0;
+      if (request !== token) return;
+      reanalyse.disabled = !canReanalyse;
       comparison.load(clip);
+      renderToss(clip);
       const feedback = analysis?.coaching;
-      renderTraining(clip, feedback);
+      renderTraining(clip, feedback, analysis);
       document.getElementById('coachSource').textContent = `${new Date(clip.createdAt).toLocaleString()} · ${clip.source === 'upload' ? 'Uploaded footage' : 'Recorded practice'}`;
       if (feedback?.status !== 'supported') {
         status.textContent = `Insufficient data for reliable coaching. ${feedback?.reason || 'No clear movement data is available.'}`;
@@ -87,10 +100,13 @@ export function initProgressCoaching({ openMoment }) {
       if (request === token) status.textContent = 'Saved coaching could not be read. Reopen Progress to try again.';
     }
   }
+  reanalyse.addEventListener('click', () => { if (selected) load(selected, true); });
   select.addEventListener('change', () => load(select.value));
   async function render() {
     const request = ++token; stop(); hear.disabled = true; text = ''; body.replaceChildren();
     comparison.clear();
+    renderToss(null);
+    reanalyse.disabled = true;
     renderTraining();
     document.getElementById('coachSource').textContent = ''; status.textContent = 'Loading recordings…';
     try {

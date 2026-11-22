@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
 // @ts-expect-error static JS module
-import { detectServePhases, comparePhase, nearestPhasePose } from '../../public/serve-coach/js/serve-phases.js';
+import { detectServePhases, comparePhase, nearestPhasePose, serveTimingMetrics } from '../../public/serve-coach/js/serve-phases.js';
 // @ts-expect-error static JS module
 import { referencePose } from '../../public/serve-coach/js/phase-reference.js';
 // @ts-expect-error static JS module
@@ -26,6 +26,15 @@ describe('saved-pose serve phases',()=>{
     expect(p.toss).toMatchObject({frameIndex:4,poseTimestampMs:400,videoTimestampMs:750,source:'automatic'});
     expect(p.trophy).toMatchObject({frameIndex:5,videoTimestampMs:850});
     expect(p.finish).toMatchObject({frameIndex:12,videoTimestampMs:1550});
+  });
+  it('measures maximum overhead extension and a contiguous trophy hold', () => {
+    const poses = frames();
+    const trophy = detectServePhases(poses, clip).trophy;
+    const metrics = serveTimingMetrics(poses, clip.video, 'right', 800, trophy);
+    expect(metrics.maxOverheadElbowDegrees).toBeCloseTo(180);
+    expect(metrics.trophyHoldSeconds).toBeCloseTo(0.1);
+    const withGap = poses.map((pose, i) => i === 4 ? { ...pose, kp: null } : pose);
+    expect(serveTimingMetrics(withGap, clip.video, 'right', 800, trophy).trophyHoldSeconds).toBeNull();
   });
   it('uses the recorded left arm rather than the raised non-serving arm as the stroke',()=>{
     expect(detectServePhases(frames(true),{...clip,dominantHand:'left'}).finish.frameIndex).toBe(12);

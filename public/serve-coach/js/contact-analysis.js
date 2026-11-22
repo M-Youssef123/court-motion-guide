@@ -23,8 +23,9 @@ export function extensionInsight(angle) {
 function point(frame, index, width, height) {
   const kp = frame?.kp;
   if (!kp || !Number.isFinite(frame.t) || !Number.isFinite(kp[index * 3 + 2]) || kp[index * 3 + 2] < MIN_CONFIDENCE) return null;
-  const x = kp[index * 3] * width, y = kp[index * 3 + 1] * height;
-  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+  const x = kp[index * 3], y = kp[index * 3 + 1], score = kp[index * 3 + 2];
+  return Number.isFinite(x) && x >= 0 && x <= 1 && Number.isFinite(y) && y >= 0 && y <= 1 && score <= 1
+    ? { x: x * width, y: y * height } : null;
 }
 
 function armPose(frame, arm, width, height) {
@@ -104,7 +105,5 @@ export function analyzeServeContact(frames, { width, height, arm, offsetMs = 0 }
     insight: extensionInsight(hit.angle), metersPerPixel,
     handSpeedMph: speed === null ? null : speed * 2.237,
     handSpeedKmh: speed === null ? null : speed * 3.6,
-    estRacketSpeedMph: speed === null ? null : speed * 2.237 * 1.75,
-    estRacketSpeedKmh: speed === null ? null : speed * 3.6 * 1.75,
   };
 }

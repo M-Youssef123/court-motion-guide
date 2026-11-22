@@ -58,8 +58,10 @@ export function initLibrary({ openClip, onDeleted }) {
       b.disabled = true; b.textContent = 'Preparing video…'; msg.textContent = '';
       saveVideo(blob, name).then((r) => {
         b.disabled = false;
-        if (r === 'cancelled') { b.textContent = label; msg.textContent = 'Not saved'; }
-        else { b.textContent = 'Saved ✓'; msg.textContent = r === 'shared' ? 'Tap “Save Video” to keep it in Photos' : name; }
+        b.textContent = label;
+        if (r === 'cancelled') msg.textContent = 'Not saved';
+        else if (r === 'shared') msg.textContent = 'Video handed to the share sheet. Check the destination you selected.';
+        else msg.textContent = `Downloading ${name}`;
         reset();
       }).catch(() => { b.disabled = false; b.textContent = label; msg.textContent = 'Couldn’t save. Try again.'; reset(); });
     });

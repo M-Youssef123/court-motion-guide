@@ -1,5 +1,5 @@
 import { analyzeServeContact, servingArm } from './contact-analysis.js';
-import { jointAngle } from './practice-data.js';
+import { jointAngle } from './movement-analysis.js';
 import { referencePose, REFERENCE_WIDTH, REFERENCE_HEIGHT } from './phase-reference.js';
 
 export const PHASE_VERSION = 1;
@@ -10,11 +10,11 @@ export function clearPoint(frame, index) {
 }
 const parts = (arm) => arm === 'right' ? { shoulder:6,elbow:8,wrist:10,tossShoulder:5,tossElbow:7,tossWrist:9 }
   : { shoulder:5,elbow:7,wrist:9,tossShoulder:6,tossElbow:8,tossWrist:10 };
-export function detectServePhases(frames, clip, offsetMs = clip.sync?.offsetMs ?? 0) {
+export function detectServePhases(frames, clip, offsetMs = clip.sync?.offsetMs ?? 0, suppliedContact) {
   const result = { toss:null,trophy:null,finish:null };
   const arm=servingArm(clip.dominantHand || clip.servingArm), w=clip.video?.width,h=clip.video?.height;
   if (!arm || (clip.strokeType || 'serve') !== 'serve' || !Array.isArray(frames)) return result;
-  const p=parts(arm), contact=analyzeServeContact(frames,{width:w,height:h,arm,offsetMs});
+  const p=parts(arm), contact=suppliedContact === undefined ? analyzeServeContact(frames,{width:w,height:h,arm,offsetMs}) : suppliedContact;
   if (!contact) return result;
   const angle = (f, toss=false) => jointAngle(f.kp,toss ? [p.tossShoulder,p.tossElbow,p.tossWrist] : [p.shoulder,p.elbow,p.wrist],w,h);
   const stable = (i, ids) => {
@@ -73,4 +73,38 @@ export function comparePhase(frame, clip, phase) {
       observed:frame.kp[wrist*3+1]<frame.kp[shoulder*3+1] ? 'above' : 'below',
       reference:ref[wrist*3+1]<ref[shoulder*3+1] ? 'above' : 'below',
     } : null };
+}
+export function serveTimingMetrics(frames, video, hand, reach, trophy) {
+  const left = hand === 'left';
+  const arm = left ? [5, 7, 9] : [6, 8, 10];
+  const { width, height } = video || {};
+  const angle = (frame) => arm.every(i => clearPoint(frame, i))
+    ? jointAngle(frame.kp, arm, width, height) : null;
+  let extension = null, hold = null;
+  for (const frame of frames) {
+    if (!Number.isFinite(reach) || Math.abs(frame.t - reach) > 150 || !clearPoint(frame, 0)
+      || !clearPoint(frame, arm[2]) || frame.kp[arm[2] * 3 + 1] >= frame.kp[1]) continue;
+    const value = angle(frame);
+    if (value !== null) extension = Math.max(extension ?? value, value);
+  }
+  if (trophy && width > 0 && height > 0) {
+    const wristX = arm[2] * 3, wristY = wristX + 1;
+    const anchor = frames[trophy.frameIndex].kp;
+    const maxDrift = Math.hypot(width, height) * 0.05;
+    const tossShoulder = left ? 6 : 5, tossWrist = left ? 10 : 9;
+    const qualifies = (frame) => {
+      const value = angle(frame);
+      return value !== null && value >= 45 && value < 115
+        && Math.hypot((frame.kp[wristX] - anchor[wristX]) * width,
+          (frame.kp[wristY] - anchor[wristY]) * height) <= maxDrift
+        && clearPoint(frame, tossShoulder) && clearPoint(frame, tossWrist)
+        && frame.kp[tossWrist * 3 + 1] < frame.kp[tossShoulder * 3 + 1];
+    };
+    let start = trophy.frameIndex, end = start;
+    const near = (a, b) => b.t > a.t && b.t - a.t <= 180;
+    while (start > 0 && near(frames[start - 1], frames[start]) && qualifies(frames[start - 1])) start--;
+    while (end < frames.length - 1 && near(frames[end], frames[end + 1]) && qualifies(frames[end + 1])) end++;
+    if (end > start) hold = (frames[end].t - frames[start].t) / 1000;
+  }
+  return { maxOverheadElbowDegrees: extension, trophyHoldSeconds: hold };
 }

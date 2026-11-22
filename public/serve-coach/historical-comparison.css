@@ -1,0 +1,14 @@
+.historical summary { cursor: pointer; }
+.historical-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-block: 1rem; }
+.historical-player { position: relative; aspect-ratio: 4 / 3; background: #0b1426; border-radius: .6rem; overflow: hidden; margin-block: .5rem; }
+.historical-player video, .historical-player canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.historical-player video { object-fit: contain; }
+.historical-player canvas { pointer-events: none; }
+.historical-controls { display: grid; gap: .5rem; margin-block: .5rem; }
+.historical-controls[hidden] { display: none; }
+.historical input[type="range"] { width: 100%; }
+.historical table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+.historical th, .historical td { padding: .45rem .25rem; text-align: left; border-bottom: 1px solid currentColor; }
+@media (orientation: portrait) and (max-width: 700px) {
+  .historical-pair { grid-template-columns: minmax(0, 1fr); }
+}

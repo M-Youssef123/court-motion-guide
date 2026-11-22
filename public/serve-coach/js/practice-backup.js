@@ -72,6 +72,8 @@ export function validateBackup(backup) {
     if (!clips.has(drill.clipId) || !validId(drill.drillId) || !date(drill.completedAt) ||
         drill.id !== JSON.stringify([drill.drillId, drill.clipId])) invalid('drill completion');
   }
+  // This metadata-only archive cannot verify pixel-derived findings against original video.
+  records.clips = records.clips.map(({ ballToss: _ballToss, ...clip }) => clip);
   // Rebuild derived observations from validated poses. A backup cannot supply its own conclusions.
   const prior = new Map(records.analyses.map((analysis) => [analysis.clipId, analysis]));
   records.analyses = records.clips.map((clip) => {

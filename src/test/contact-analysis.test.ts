@@ -94,8 +94,7 @@ describe('selected serving arm contact analysis', () => {
     const expected=(50+50+Math.hypot(10,70))*0.0025/0.1/3;
     expect(result?.handSpeedMph).toBeCloseTo(expected*2.237,8);
     expect(result?.handSpeedKmh).toBeCloseTo(expected*3.6,8);
-    expect(result?.estRacketSpeedMph).toBeCloseTo(expected*2.237*1.75,8);
-    expect(result?.estRacketSpeedKmh).toBeCloseTo(expected*3.6*1.75,8);
+    expect(result).not.toHaveProperty("estRacketSpeedMph");
   });
   it('does not use fast preparation outside the ±3-frame impact window', () => {
     const frames=serve();

@@ -1,4 +1,5 @@
 import * as store from './store.js';
+import { PROMPTS, coachTopic, coachEvidence, topicAdvice } from './coach-qa.js';
 import { comparisonSeries, comparisonText } from './session-progress.js';
 
 export const DRILLS = Object.freeze({
@@ -49,33 +50,57 @@ export function initTraining(host) {
     <span class="lbl">Your drill</span><h3 class="sub-h"></h3><p class="dose"></p><p class="instructions"></p>
     <button class="btn btn-ball" id="doneBtn" type="button">Mark done</button>
     <p class="empty" role="status"></p>
-    </article><h3 class="sub-h">Ask your coach</h3><div class="qs"></div>
-    <p class="answer" role="status" hidden></p>`;
+    </article><h3 class="sub-h">Ask your coach</h3>
+    <form class="row"><label class="field-label">Your question
+      <input class="input" name="question" type="text" maxlength="300" required placeholder="Ask about your serve">
+    </label><button class="btn btn-ball" type="submit">Ask</button></form>
+    <div class="qs"></div><div class="answer" role="status" hidden></div>`;
   host.append(section);
   const article = section.querySelector('article');
   const done = section.querySelector('#doneBtn');
   const output = section.querySelector('.answer');
   const status = article.querySelector('[role="status"]');
   let current = null, questionToken = 0;
-  for (const [key, text] of Object.entries(QUESTIONS)) {
+  const form = section.querySelector('form'), input = form.elements.question;
+  async function answer(question, key = coachTopic(question)) {
+    const request = ++questionToken, context = current;
+    output.hidden = false;
+    output.textContent = 'Reading saved practice data…';
+    try {
+      const data = await store.getJournalData();
+      const recent = new Set(data.sessions.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 4).map(s => s.id));
+      const recentClips = new Set(data.clips.filter(c => recent.has(c.sessionId)).map(c => c.id));
+      const completions = await store.listDrillCompletions();
+      if (request !== questionToken) return;
+      const topic = topicAdvice(key, context?.feedback, context?.analysis?.metrics?.serve?.trophyHoldSeconds);
+      const lines = [
+        ['Your practice', coachEvidence(data, context?.clip, completions.filter(c => recentClips.has(c.clipId)).length)],
+        ...(topic ? [['What the tracking shows', topic.evidence], ['Try next', topic.advice]]
+          : [['Coach response', key ? answerCoach(key, { feedback: context?.feedback, comparisons: comparisonSeries(data, context?.clip.id),
+            sessionId: context?.clip.sessionId }) : 'Try asking about net clearance, pronation, trophy tempo, consistency, or a drill. This coach uses local tennis rules.']]),
+      ];
+      output.replaceChildren(...lines.map(([heading, message]) => {
+        const p = document.createElement('p'), label = document.createElement('strong');
+        label.textContent = heading;
+        p.append(label, document.createElement('br'), message);
+        return p;
+      }));
+    } catch {
+      if (request === questionToken) output.textContent = 'Saved evidence could not be read. Try again.';
+    }
+  }
+  form.addEventListener('submit', event => {
+    event.preventDefault();
+    const question = input.value.trim();
+    if (question) answer(question);
+  });
+  for (const [key, text] of [...Object.entries(QUESTIONS), ...PROMPTS.map(prompt => [coachTopic(prompt), prompt])]) {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'btn btn-quiet';
     button.textContent = text;
     section.querySelector('.qs').append(button);
-    button.addEventListener('click', async () => {
-      const request = ++questionToken, context = current;
-      output.hidden = false;
-      output.textContent = 'Reading saved practice data…';
-      try {
-        const needsHistory = context && ['consistency', 'improvement'].includes(key);
-        const comparisons = needsHistory ? comparisonSeries(await store.getJournalData(), context.clip.id) : [];
-        if (request !== questionToken) return;
-        output.textContent = answerCoach(key, { feedback: context?.feedback, comparisons, sessionId: context?.clip.sessionId });
-      } catch {
-        if (request === questionToken) output.textContent = 'Saved evidence could not be read. Try again.';
-      }
-    });
+    button.addEventListener('click', () => { input.value = text; answer(text, key); });
   }
 
   done.addEventListener('click', async () => {
@@ -90,11 +115,11 @@ export function initTraining(host) {
     }
   });
 
-  return async function render(clip, feedback) {
+  return async function render(clip, feedback, analysis) {
     questionToken++;
     output.hidden = true;
     const drill = recommendedDrill(feedback);
-    const context = clip ? { clip, feedback, drill } : null;
+    const context = clip ? { clip, feedback, drill, analysis } : null;
     current = context;
     article.hidden = !drill;
     if (!drill) return;

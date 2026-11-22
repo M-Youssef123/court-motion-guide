@@ -17,6 +17,7 @@ import { Preview } from './preview.js';
 import { initRecord } from './record.js';
 import { initReplay } from './replay.js';
 import { initLibrary } from './library.js';
+import { initHistoricalComparison } from './historical-comparison.js';
 import { initPractice, planText } from './practice.js';
 import { tripodName } from './labels.js';
 import { getPoseInfo } from './pose.js';
@@ -54,7 +55,7 @@ function route() {
   if (h !== 'ready') stopPreview();
   if (prev === 'record' && h !== 'record') record.leave();
   if (prev === 'replay' && h !== 'replay') replay.leave();
-  if (prev === 'progress' && h !== 'progress') coaching.stop();
+  if (prev === 'progress' && h !== 'progress') { coaching.stop(); historical.clear(); }
   VIEWS.forEach((v) => { $(v).hidden = v !== h; });
   const tab = TAB_FOR[h];
   document.querySelectorAll('.tab').forEach((t) => {
@@ -65,7 +66,7 @@ function route() {
   if (h === 'camera') enterCamera();
   if (h === 'ready') enterReady();
   if (h === 'record' && prev !== 'record') record.enter();
-  if (h === 'progress') { library.render(); notes.render(); coaching.render(); renderProgress(); }
+  if (h === 'progress') { library.render(); notes.render(); coaching.render(); historical.render(); renderProgress(); }
   if (h === 'practice') practice.enter();
   if (h === 'home') renderHome();
   if (h === 'replay') replay.enter();
@@ -288,15 +289,16 @@ window.addEventListener('pagehide', stopPreview);
 /* ---------- record, replay, library, practice ---------- */
 const replay = initReplay();
 const renderProgress = initSessionProgress();
+const historical = initHistoricalComparison($('coach'));
 const coaching = initProgressCoaching({ openMoment: (id, poseMs) => replay.openMoment(id, poseMs) });
 initUpload({ openClip: (id) => replay.open(id) });
 const library = initLibrary({
   openClip: (id) => replay.open(id),
-  onDeleted: () => { coaching.render(); renderProgress(); },
+  onDeleted: () => { coaching.render(); historical.render(); renderProgress(); },
 });
 const notes = initNotes();
 initJournalExport();
-initBackupControls(() => { library.render(); notes.render(); coaching.render(); renderProgress(); });
+initBackupControls(() => { library.render(); notes.render(); coaching.render(); historical.render(); renderProgress(); });
 const record = initRecord({ debug, openClip: (id) => replay.open(id, 'record') });
 const practice = initPractice({
   getHand: () => profile().hand || null,

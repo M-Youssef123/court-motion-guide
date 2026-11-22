@@ -250,7 +250,7 @@ export async function updateClip(id, changes) {
     const os = t.objectStore('clips');
     os.get(id).onsuccess = (e) => {
       const c = e.target.result;
-      if (c) { os.put(clipRecord({ ...c, ...changes })); refreshSessionTotals(t, c.sessionId); }
+      if (c && !c.deletedAt) { os.put(clipRecord({ ...c, ...changes })); refreshSessionTotals(t, c.sessionId); }
     };
   });
 }
@@ -277,6 +277,7 @@ export async function finalizeClipData(clipId, options = {}) {
   const clip = await getClip(clipId);
   if (!clip || clip.deletedAt || clip.status === 'recording') return null;
   const frames = await getClipPoses(clipId);
+  if (clip.restoredWithoutVideo && !frames.length) return getClipAnalysis(clipId);
   const analysis = buildClipAnalysis(clip, frames, options);
   await tx(['clips', 'analyses'], 'readwrite', (t) => {
     t.objectStore('clips').get(clipId).onsuccess = (e) => {
@@ -309,6 +310,7 @@ export async function getPracticeData(sessionId) {
   return { ...session, recordings, notes: await listNotes(sessionId) };
 }
 export function getDrillCompletion(id) { return get('drills', id); }
+export function listDrillCompletions() { return getAll('drills'); }
 
 export function completeDrill(drillId, clipId) {
   const id = JSON.stringify([drillId, clipId]);
