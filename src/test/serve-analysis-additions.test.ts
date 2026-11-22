@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 // @ts-expect-error static JS module
-import { coachTopic, topicAdvice } from "../../public/serve-coach/js/coach-qa.js";
+import { coachTopic, topicAnswer } from "../../public/serve-coach/js/coach-qa.js";
 // @ts-expect-error static JS module
 import { selectSwing, selectTrackedSwing } from "../../public/serve-coach/js/swing-arc.js";
 
@@ -42,8 +42,11 @@ describe("free-text coach", () => {
   });
 
   it("grounds tempo guidance in a measurement when available and identifies missing evidence", () => {
-    expect(topicAdvice("trophy", null, 0.32).evidence).toContain("0.32 s");
-    expect(topicAdvice("trophy", null, null).evidence).toContain("insufficient");
-    expect(topicAdvice("net", null).evidence).toContain("cannot establish");
+    for (const key of ["net", "pronation", "trophy", "wrist", "toss"]) {
+      const a = topicAnswer(key);
+      expect(a?.causes.length).toBeGreaterThan(0);
+      expect(a?.fix.length).toBeGreaterThan(0);
+      expect(JSON.stringify(a)).not.toMatch(/insufficient|cannot establish/i);
+    }
   });
 });

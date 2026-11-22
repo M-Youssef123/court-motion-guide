@@ -26,19 +26,20 @@ it("routes the actual static app to Progress and wires coach and backup controls
   expect(document.querySelector("#sessions")).toBeNull();
   expect(document.querySelector("#backupImport")?.textContent).toBe("Restore JSON backup");
   const question = [...document.querySelectorAll("button")].find(
-    (b) => b.textContent === "What do you see in my technique?",
+    (b) => b.textContent === "Why is my serve hitting the net?",
   );
-  await vi.waitFor(() => expect(question?.disabled).toBe(false));
+  expect(question?.disabled).toBe(false);
   question?.click();
   await vi.waitFor(() =>
-    expect(document.querySelector("#coach .answer")?.textContent).toMatch(/insufficient/),
+    expect(document.querySelector("#coach .answer")?.textContent).toContain("Drill to try"),
   );
+  expect(document.querySelector("#coach .answer")?.textContent).not.toMatch(/insufficient/);
   expect(document.querySelector('#coach input[name="question"]')).toBeNull();
   [...document.querySelectorAll("button")]
     .find((b) => b.textContent === "Am I rushing my trophy pose?")
     ?.click();
   await vi.waitFor(() =>
-    expect(document.querySelector("#coach .answer")?.textContent).toContain("trophy hold"),
+    expect(document.querySelector("#coach .answer")?.textContent).toContain("down together, up together"),
   );
   const historical = document.querySelector<HTMLDetailsElement>(".historical");
   historical!.open = true;
