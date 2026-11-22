@@ -64,12 +64,22 @@ export async function openUploadVideo(video, url, options = {}) {
         options.promptDelayMs ?? 1200,
       );
     }
+    const kick = () => {
+      try {
+        video.play()?.catch(() => {});
+      } catch {
+        // Readiness and the separate playback button still work.
+      }
+    };
+    kick();
+    // iOS may ignore the first play() while the picked file is still staging;
+    // nudge the decoder again once metadata exists.
+    video.addEventListener("loadedmetadata", kick, { once: true });
     try {
-      video.play()?.catch(() => {});
-    } catch {
-      // Readiness and the separate playback button still work.
+      await decoded;
+    } finally {
+      video.removeEventListener("loadedmetadata", kick);
     }
-    await decoded;
   } finally {
     clearTimeout(prompt);
     video.pause();
@@ -84,18 +94,31 @@ export async function openUploadFile(video, file, mime, options = {}) {
       : mime === "video/mp4"
         ? [mime, ""]
         : [mime];
-  for (const type of types) {
+  // First-pick stalls are common on iPhone while Photos stages the file; one quiet
+  // retry of the same bytes usually succeeds, matching a manual second upload.
+  const attempts = types.map((type) => ({ type, stallRetry: true }));
+  for (let i = 0; i < attempts.length; i++) {
+    const { type } = attempts[i];
     const source = file.type === type ? file : file.slice(0, file.size, type);
     const url = URL.createObjectURL(source);
+    const first = attempts[i].stallRetry;
     try {
-      await openUploadVideo(video, url, options);
+      await openUploadVideo(video, url, {
+        ...options,
+        timeoutMs: first ? (options.firstTimeoutMs ?? 12000) : options.timeoutMs,
+      });
       return { url, playbackMime: type };
     } catch (error) {
       video.removeAttribute("src");
       video.load();
       URL.revokeObjectURL(url);
-      if (options.signal?.aborted || ![3, 4].includes(error.mediaCode) || type === types.at(-1))
-        throw error;
+      if (options.signal?.aborted) throw error;
+      if (first && error.mediaCode == null) {
+        attempts.splice(i + 1, 0, { type, stallRetry: false });
+        options.onRetry?.();
+        continue;
+      }
+      if (![3, 4].includes(error.mediaCode) || i === attempts.length - 1) throw error;
       options.onRetry?.();
     }
   }

@@ -97,7 +97,7 @@ describe("upload media readiness", () => {
     });
     await requestPlay!();
     await opening;
-    expect(video.play).toHaveBeenCalledTimes(2);
+    expect(video.play).toHaveBeenCalledTimes(3);
   });
 
   it("reports startup stalls separately from unsupported formats", async () => {
@@ -272,4 +272,26 @@ it("saves the original playable upload when movement processing is unavailable",
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   }
+});
+
+it("quietly retries a first-pick startup stall before reporting a timeout", async () => {
+  const video = new MediaStub();
+  let srcSets = 0;
+  Object.defineProperty(video, "src", {
+    get: () => "",
+    set: (v: string) => {
+      if (!v) return;
+      srcSets++;
+      if (srcSets === 2)
+        setTimeout(() => {
+          video.metadata();
+          video.readyState = 2;
+          video.dispatchEvent(new Event("canplay"));
+        }, 1);
+    },
+  });
+  const file = new NodeFile([new Uint8Array([1, 2, 3])], "serve.mp4", { type: "video/mp4" });
+  const result = await openUploadFile(video, file, "video/mp4", { firstTimeoutMs: 5 });
+  expect(srcSets).toBe(2);
+  expect(result.playbackMime).toBe("video/mp4");
 });
