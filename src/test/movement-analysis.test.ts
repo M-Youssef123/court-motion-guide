@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-// @ts-expect-error plain JS module
 import {
   bodyOrientation,
   smoothMovement,
   wristMotion,
+  // @ts-expect-error plain JS module
 } from "../../public/serve-coach/js/movement-analysis.js";
 
 function frame(t: number, points: [number, number, number, number?][]) {

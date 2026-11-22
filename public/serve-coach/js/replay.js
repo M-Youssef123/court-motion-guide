@@ -16,7 +16,7 @@
  */
 
 import * as store from "./store.js";
-import { SkeletonOverlay } from "./overlay.js";
+import { SkeletonOverlay, drawTossTrack } from "./overlay.js";
 import { estimateFrame } from "./pose.js";
 import { tripodName, orientationName } from "./labels.js";
 import { saveVideo, clipFilename } from "./save-video.js";
@@ -91,13 +91,15 @@ export function initReplay({ onDeleted } = {}) {
     openToken = 0;
   let wantedId = null,
     selectedArm = null,
-    wantedPoseMs = null;
+    wantedPoseMs = null,
+    wantedToss = false;
 
   const movement = document.createElement("section");
   movement.className = "block";
   movement.innerHTML = `<h2 class="sec-h">Movement in replay</h2>
     <div class="rp-toggles">
       <button class="rp-tog" id="rpAngles" type="button" aria-pressed="false" disabled>2D angles</button>
+      <button class="rp-tog" id="rpToss" type="button" aria-pressed="false" hidden>Toss path</button>
       <label>Trajectory arc <select class="input" id="rpTrajectory" disabled><option value="none">None</option><option value="trail">Trailing 300 ms</option><option value="full">Full swing</option></select></label>
     </div>
     <p class="rec-label" id="rpMeasurements"></p>
@@ -109,7 +111,8 @@ export function initReplay({ onDeleted } = {}) {
   $("rpInfo").before(movement);
   let analysis = null,
     anglesOn = false,
-    swing = null;
+    swing = null,
+    tossOn = false;
   const measurement = $("rpMeasurements");
   $("rpBox").append(measurement);
   measurement.classList.add("rp-measurements");
@@ -165,6 +168,15 @@ export function initReplay({ onDeleted } = {}) {
     arcStatus();
     redraw();
   });
+  const tossButton = $("rpToss");
+  function setToss(on) {
+    tossOn = on;
+    tossButton.setAttribute("aria-pressed", String(on));
+  }
+  tossButton.addEventListener("click", () => {
+    setToss(!tossOn);
+    redraw();
+  });
 
   /* ---------- pose lookup and drawing ---------- */
   function poseAt(tMs, maxGap = 250, source = frames) {
@@ -213,6 +225,7 @@ export function initReplay({ onDeleted } = {}) {
       .join(" · ");
     const display = reading || "2D angles unavailable here";
     if (anglesOn && measurement.textContent !== display) measurement.textContent = display;
+    if (tossOn) drawTossTrack(overlay, clip?.ballToss);
     const wrist = analysis?.metrics.wrist,
       mode = $("rpTrajectory").value;
     if (mode === "trail" && wrist) {
@@ -508,6 +521,8 @@ export function initReplay({ onDeleted } = {}) {
     setSave("idle");
     analysis = null;
     swing = null;
+    tossButton.hidden = true;
+    setToss(false);
     $("rpArcStatus").textContent = "";
     selectedArm = null;
     measurement.hidden = true;
@@ -605,6 +620,9 @@ export function initReplay({ onDeleted } = {}) {
     }
     if (token !== openToken) return;
     paintSpeed();
+    tossButton.hidden = !clip.ballToss?.track?.length;
+    setToss(wantedToss && !tossButton.hidden);
+    wantedToss = false;
     setControls(true);
     startSync();
     redraw();
@@ -654,18 +672,18 @@ export function initReplay({ onDeleted } = {}) {
   });
 
   return {
-    open(clipId, from = "progress") {
+    open(clipId, from = "progress", { poseMs = null, toss = false } = {}) {
       wantedId = clipId;
-      wantedPoseMs = null;
+      wantedPoseMs = poseMs;
+      wantedToss = toss;
       const back = document.querySelector(".rp-back");
       back.href = "#" + from;
       back.textContent = from === "record" ? "‹ Back to recording" : "‹ Video recordings";
       if (location.hash === "#replay") enter();
       else location.hash = "#replay";
     },
-    openMoment(clipId, poseTimestampMs) {
-      this.open(clipId);
-      wantedPoseMs = poseTimestampMs;
+    openMoment(clipId, poseTimestampMs, toss = false) {
+      this.open(clipId, "progress", { poseMs: poseTimestampMs, toss });
     },
     hasClip: () => !!wantedId,
     enter,

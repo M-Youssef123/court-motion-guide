@@ -1,11 +1,11 @@
 import "fake-indexeddb/auto";
 import { describe, expect, it } from "vitest";
-// @ts-expect-error static JS module
 import {
   detectServePhases,
   comparePhase,
   nearestPhasePose,
   serveTimingMetrics,
+  // @ts-expect-error static JS module
 } from "../../public/serve-coach/js/serve-phases.js";
 // @ts-expect-error static JS module
 import { referencePose } from "../../public/serve-coach/js/phase-reference.js";

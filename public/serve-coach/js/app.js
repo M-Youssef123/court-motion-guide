@@ -93,11 +93,14 @@ function route() {
   if (h === "ready") enterReady();
   if (h === "record" && prev !== "record") record.enter();
   if (h === "progress") {
-    library.render();
-    notes.render();
-    coaching.render();
-    historical.render();
-    renderProgress();
+    practiceReady.then(() => {
+      if (currentView !== "progress") return;
+      library.render();
+      notes.render();
+      coaching.render();
+      historical.render();
+      renderProgress();
+    });
   }
   if (h === "practice") practice.enter();
   if (h === "home") renderHome();
@@ -423,7 +426,7 @@ const replay = initReplay();
 const renderProgress = initSessionProgress();
 const historical = initHistoricalComparison($("coach"));
 const coaching = initProgressCoaching({
-  openMoment: (id, poseMs) => replay.openMoment(id, poseMs),
+  openMoment: (id, poseMs, toss) => replay.openMoment(id, poseMs, toss),
 });
 initUpload({ openClip: (id) => replay.open(id) });
 const library = initLibrary({
@@ -495,14 +498,13 @@ record.enter = () => {
   return _enter();
 };
 
-recoverUnfinishedClips()
+const practiceReady = recoverUnfinishedClips()
   .then(markUnknownTripodPositions)
+  .catch(() => {});
+practiceReady
   .then(store.backfillPracticeData)
   .then(() => {
-    if (currentView === "progress") {
-      coaching.render();
-      renderProgress();
-    }
+    if (currentView === "progress") renderProgress();
     if (currentView === "home") renderHome();
   })
   .catch(() => {});

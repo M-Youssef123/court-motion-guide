@@ -2,7 +2,7 @@ import { openUploadVideo, seekUploadVideo } from "./upload-media.js";
 import { clearPoint, detectServePhases, nearestPhasePose } from "./serve-phases.js";
 import { analyzeServeContact, servingArm } from "./contact-analysis.js";
 
-export const BALL_TOSS_VERSION = 1;
+export const BALL_TOSS_VERSION = 2;
 
 export function ballCandidates({ data, width, height }, region) {
   const mask = new Uint8Array(width * height);
@@ -156,8 +156,11 @@ export function possibleContact(samples, track, reach, aspect) {
   );
   for (const point of nearby) {
     const previous = track.path[track.path.indexOf(point) - 1];
-    const next = samples.find((sample) => sample.t > point.t);
-    if (!previous || !next || next.t - point.t > 62) continue;
+    const nextIndex = samples.findIndex((sample) => sample.t > point.t);
+    const next = samples[nextIndex],
+      following = samples[nextIndex + 1];
+    if (!previous || !next || !following || next.t - point.t > 62 || following.t - next.t > 62)
+      continue;
     const ratio = (next.t - point.t) / (point.t - previous.t);
     const projected = {
       x: point.x + (point.x - previous.x) * ratio,
@@ -173,7 +176,27 @@ export function possibleContact(samples, track, reach, aspect) {
         distance(candidate, projected) > 0.045
       );
     });
-    if (departures.length === 1) return point.t;
+    if (departures.length !== 1) continue;
+    const departure = departures[0];
+    const outgoingRatio = (following.t - next.t) / (next.t - point.t);
+    const outgoing = {
+      x: departure.x + (departure.x - point.x) * outgoingRatio,
+      y: departure.y + (departure.y - point.y) * outgoingRatio,
+    };
+    const continuations = following.candidates.filter(
+      (candidate) =>
+        distance(candidate, outgoing) < 0.045 &&
+        distance(candidate, point) > distance(departure, point),
+    );
+    if (continuations.length === 1) {
+      return {
+        t: point.t,
+        departure: [
+          { ...departure, t: next.t },
+          { ...continuations[0], t: following.t },
+        ],
+      };
+    }
   }
   return null;
 }
@@ -235,8 +258,10 @@ export async function scanBallToss(video, url, frames, clip, signal) {
         t: reach.contactTimestamp,
       }
     : null;
+  const contact = possibleContact(samples, track, reachPoint, aspect);
   return {
-    possibleContactVideoMs: possibleContact(samples, track, reachPoint, aspect),
+    possibleContactVideoMs: contact?.t ?? null,
+    departure: contact?.departure ?? [],
     version: BALL_TOSS_VERSION,
     samples: track.path.length,
     track: track.path,

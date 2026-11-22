@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-// @ts-expect-error static JS module
 import {
   ballCandidates,
   possibleContact,
   traceBallToss,
+  // @ts-expect-error static JS module
 } from "../../public/serve-coach/js/ball-toss.js";
 // @ts-expect-error static JS module
 import { coachTopic, topicAdvice } from "../../public/serve-coach/js/coach-qa.js";
@@ -72,9 +72,12 @@ it("offers a possible contact cue only with a distinct visible departure near ov
   ];
   const track = { apex: path[0], path };
   const reach = { x: 0.4, y: 0.38, t: 125 };
-  expect(possibleContact([{ t: 168, candidates: [{ x: 0.5, y: 0.34 }] }], track, reach, 1)).toBe(
-    126,
-  );
+  const departure = [
+    { t: 168, candidates: [{ x: 0.5, y: 0.34 }] },
+    { t: 210, candidates: [{ x: 0.58, y: 0.29 }] },
+  ];
+  expect(possibleContact(departure, track, reach, 1)).toMatchObject({ t: 126 });
+  expect(possibleContact(departure.slice(0, 1), track, reach, 1)).toBeNull();
   expect(
     possibleContact([{ t: 168, candidates: [{ x: 0.43, y: 0.42 }] }], track, reach, 1),
   ).toBeNull();

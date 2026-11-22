@@ -144,6 +144,7 @@ export function initTraining(host) {
     const question = input.value.trim();
     if (question) answer(question);
   });
+  const questionControls = [...form.elements];
   for (const [key, text] of [
     ...Object.entries(QUESTIONS),
     ...PROMPTS.map((prompt) => [coachTopic(prompt), prompt]),
@@ -152,12 +153,15 @@ export function initTraining(host) {
     button.type = "button";
     button.className = "btn btn-quiet";
     button.textContent = text;
+    questionControls.push(button);
     section.querySelector(".qs").append(button);
     button.addEventListener("click", () => {
       input.value = text;
       answer(text, key);
     });
   }
+
+  for (const control of questionControls) control.disabled = true;
 
   done.addEventListener("click", async () => {
     const context = current;
@@ -177,8 +181,9 @@ export function initTraining(host) {
     }
   });
 
-  return async function render(clip, feedback, analysis) {
+  return async function render(clip, feedback, analysis, loading = false) {
     questionToken++;
+    for (const control of questionControls) control.disabled = loading;
     output.hidden = true;
     const drill = recommendedDrill(feedback);
     const context = clip ? { clip, feedback, drill, analysis } : null;

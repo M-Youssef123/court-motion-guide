@@ -48,7 +48,7 @@ export function initTossProgress(host, openMoment) {
         link.textContent = label;
         const id = clip.id,
           ms = videoMs + clip.sync.offsetMs;
-        link.addEventListener("click", () => openMoment(id, ms));
+        link.addEventListener("click", () => openMoment(id, ms, true));
         status.append(link);
       }
     }

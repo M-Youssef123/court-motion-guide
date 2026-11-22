@@ -90,7 +90,7 @@ export function initProgressCoaching({ openMoment }) {
     comparison.clear();
     renderToss(null);
     reanalyse.disabled = true;
-    renderTraining();
+    renderTraining(null, null, null, true);
     status.textContent = "Reading saved movement data…";
     selected = id;
     try {
@@ -169,8 +169,10 @@ export function initProgressCoaching({ openMoment }) {
       text = spoken.join(" ");
       hear.disabled = !text || !window.speechSynthesis;
     } catch {
-      if (request === token)
+      if (request === token) {
+        renderTraining();
         status.textContent = "Saved coaching could not be read. Reopen Progress to try again.";
+      }
     }
   }
   reanalyse.addEventListener("click", () => {
@@ -186,7 +188,7 @@ export function initProgressCoaching({ openMoment }) {
     comparison.clear();
     renderToss(null);
     reanalyse.disabled = true;
-    renderTraining();
+    renderTraining(null, null, null, true);
     document.getElementById("coachSource").textContent = "";
     status.textContent = "Loading recordings…";
     try {
@@ -205,6 +207,7 @@ export function initProgressCoaching({ openMoment }) {
         select.append(option);
       }
       if (!clips.length) {
+        renderTraining();
         status.textContent =
           "Insufficient data for reliable coaching. Save a recording with clear body tracking first.";
         return;
@@ -213,8 +216,10 @@ export function initProgressCoaching({ openMoment }) {
       select.value = selected;
       await load(selected);
     } catch {
-      if (request === token)
+      if (request === token) {
+        renderTraining();
         status.textContent = "Recordings could not be read. Reopen Progress to try again.";
+      }
     }
   }
   return { render, stop };

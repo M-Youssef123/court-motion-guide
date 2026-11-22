@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-// @ts-expect-error static app uses plain JS modules
 import {
   analyzeServeContact,
   extensionInsight,
   resolveServingArm,
+  // @ts-expect-error static app uses plain JS modules
 } from "../../public/serve-coach/js/contact-analysis.js";
 
 const size = { width: 1000, height: 1000, arm: "right" };

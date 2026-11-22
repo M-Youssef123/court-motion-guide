@@ -2,11 +2,11 @@ import "fake-indexeddb/auto";
 import { beforeAll, describe, expect, it } from "vitest";
 // @ts-expect-error static JS module
 import * as store from "../../public/serve-coach/js/store.js";
-// @ts-expect-error static JS module
 import {
   buildClipAnalysis,
   frameMetrics,
   jointAngle,
+  // @ts-expect-error static JS module
 } from "../../public/serve-coach/js/practice-data.js";
 // @ts-expect-error static JS module
 import { resolveServingArm } from "../../public/serve-coach/js/contact-analysis.js";

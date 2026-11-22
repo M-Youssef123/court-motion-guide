@@ -145,3 +145,43 @@ export class SkeletonOverlay {
     });
   }
 }
+
+/** Draw image-plane toss evidence and the separately detected outgoing samples. */
+export function drawTossTrack(overlay, toss) {
+  const { ctx, dpr, mapping, video } = overlay;
+  if (!mapping || !toss?.track?.length) return;
+  const screen = (p) =>
+    toScreen(mapping, { x: p.x * video.videoWidth, y: p.y * video.videoHeight });
+  const path = (samples, color, dashed = false) => {
+    ctx.strokeStyle = color;
+    ctx.setLineDash(dashed ? [5, 4] : []);
+    ctx.beginPath();
+    samples.forEach((sample, i) => {
+      const { x, y } = screen(sample);
+      if (!i || sample.t - samples[i - 1].t > 62) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  };
+  ctx.save();
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.lineWidth = 3;
+  ctx.lineCap = "round";
+  path(toss.track, "#f6ea57");
+  const apex = toss.track.find((p) => p.t === toss.apexVideoMs);
+  const candidate = toss.track.find((p) => p.t === toss.possibleContactVideoMs);
+  if (candidate && toss.departure?.length) path([candidate, ...toss.departure], "#fb9a64", true);
+  ctx.setLineDash([]);
+  for (const [point, color] of [
+    [apex, "#f6ea57"],
+    [candidate, "#fb9a64"],
+  ]) {
+    if (!point) continue;
+    const { x, y } = screen(point);
+    ctx.strokeStyle = color;
+    ctx.beginPath();
+    ctx.arc(x, y, 7, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}

@@ -28,6 +28,7 @@ it("routes the actual static app to Progress and wires coach and backup controls
   const question = [...document.querySelectorAll("button")].find(
     (b) => b.textContent === "What do you see in my technique?",
   );
+  await vi.waitFor(() => expect(question?.disabled).toBe(false));
   question?.click();
   await vi.waitFor(() =>
     expect(document.querySelector("#coach .answer")?.textContent).toMatch(/insufficient/),
