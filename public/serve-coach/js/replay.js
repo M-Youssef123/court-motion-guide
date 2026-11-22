@@ -16,6 +16,7 @@
  */
 
 import * as store from "./store.js";
+import { lowerBoundTime, nearestSample } from "./pose-timeline.js";
 import { SkeletonOverlay, drawTossTrack } from "./overlay.js";
 import { estimateFrame } from "./pose.js";
 import { tripodName, orientationName } from "./labels.js";
@@ -180,17 +181,7 @@ export function initReplay({ onDeleted } = {}) {
 
   /* ---------- pose lookup and drawing ---------- */
   function poseAt(tMs, maxGap = 250, source = frames) {
-    if (!source.length) return null;
-    let lo = 0,
-      hi = source.length - 1;
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      if (source[mid].t < tMs) lo = mid + 1;
-      else hi = mid;
-    }
-    let best = source[lo];
-    if (lo > 0 && Math.abs(source[lo - 1].t - tMs) < Math.abs(best.t - tMs)) best = source[lo - 1];
-    return Math.abs(best.t - tMs) <= maxGap ? best : null;
+    return nearestSample(source, tMs, maxGap);
   }
   function toVideoPx(kp) {
     const vw = video.videoWidth,
@@ -229,7 +220,10 @@ export function initReplay({ onDeleted } = {}) {
     const wrist = analysis?.metrics.wrist,
       mode = $("rpTrajectory").value;
     if (mode === "trail" && wrist) {
-      const samples = wrist.trajectory.filter((p) => p.t >= poseMs - 300 && p.t <= poseMs);
+      const start = lowerBoundTime(wrist.trajectory, poseMs - 300);
+      let end = start;
+      while (end < wrist.trajectory.length && wrist.trajectory[end].t <= poseMs) end++;
+      const samples = wrist.trajectory.slice(start, end);
       drawSwingArc(overlay, samples, { poseMs, peak: wrist.peak, trailing: true });
     } else if (mode === "full" && swing) {
       drawSwingArc(overlay, swing.samples, { poseMs, peak: swing.peak, apex: swing.apex });

@@ -124,6 +124,8 @@ describe("saved-pose serve phases", () => {
     const f = frames();
     expect(nearestPhasePose(f, 1150, -350)?.t).toBe(800);
     expect(nearestPhasePose(f, 2500, -350)).toBeNull();
+    expect(nearestPhasePose(f, 1200, -350)?.t).toBe(800);
+    expect(nearestPhasePose([], 1150, -350)).toBeNull();
   });
   it("compares angles against the exact original reference pose without an ideal-form score", () => {
     const r = referencePose("trophy", "right");

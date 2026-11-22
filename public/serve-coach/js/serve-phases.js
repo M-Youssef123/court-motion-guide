@@ -1,3 +1,4 @@
+import { nearestSample } from "./pose-timeline.js";
 import { analyzeServeContact, servingArm } from "./contact-analysis.js";
 import { jointAngle } from "./movement-analysis.js";
 import { referencePose, REFERENCE_WIDTH, REFERENCE_HEIGHT } from "./phase-reference.js";
@@ -111,12 +112,7 @@ export function detectServePhases(
 
 export function nearestPhasePose(frames, videoMs, offsetMs, maxGapMs = 100) {
   if (!Number.isFinite(videoMs) || !Number.isFinite(offsetMs)) return null;
-  const target = videoMs + offsetMs;
-  let best = null;
-  for (const f of frames)
-    if (Number.isFinite(f.t) && (!best || Math.abs(f.t - target) < Math.abs(best.t - target)))
-      best = f;
-  return best && Math.abs(best.t - target) <= maxGapMs ? best : null;
+  return nearestSample(frames, videoMs + offsetMs, maxGapMs);
 }
 
 export function comparePhase(frame, clip, phase) {

@@ -80,11 +80,11 @@ export function initHistoricalComparison(host) {
     }
     q("[data-metrics]").replaceChildren();
   }
-  function draw(side) {
+  function draw(side, mediaTime = side.video.currentTime) {
     const video = side.video;
     if (!side.ready) return;
     const frame = Number.isFinite(side.offset)
-      ? nearestPhasePose(side.frames, video.currentTime * 1000, side.offset)
+      ? nearestPhasePose(side.frames, mediaTime * 1000, side.offset)
       : null;
     const points = frame?.kp
       ? Array.from({ length: 17 }, (_, i) => ({
@@ -236,18 +236,23 @@ export function initHistoricalComparison(host) {
     });
     for (const event of ["loadeddata", "seeked", "timeupdate"])
       video.addEventListener(event, () => draw(side));
+    let drawGeneration = 0;
     video.addEventListener("play", () => {
       side.soloPlay.textContent = "Pause";
-      const frame = () => {
-        if (side.ready && !video.paused && !video.ended) {
-          draw(side);
-          requestAnimationFrame(frame);
-        }
+      const current = ++drawGeneration;
+      const schedule = video.requestVideoFrameCallback
+        ? (frame) => video.requestVideoFrameCallback(frame)
+        : (frame) => requestAnimationFrame(frame);
+      const frame = (_now, metadata) => {
+        if (current !== drawGeneration || !side.ready || video.paused || video.ended) return;
+        draw(side, metadata?.mediaTime);
+        schedule(frame);
       };
-      requestAnimationFrame(frame);
+      schedule(frame);
     });
     for (const event of ["pause", "ended"])
       video.addEventListener(event, () => {
+        drawGeneration++;
         side.soloPlay.textContent = "Play";
       });
     side.soloPlay.addEventListener("click", () => {

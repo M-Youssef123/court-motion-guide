@@ -401,7 +401,10 @@ export async function getClipVideo(clip) {
 /** All pose frames for a clip, sorted by time. */
 export async function getClipPoses(clipId) {
   const batches = (await getAll("poses", range(clipId))).sort((a, b) => a.seq - b.seq);
-  return batches.flatMap((b) => b.frames).sort((a, b) => a.t - b.t);
+  return batches
+    .flatMap((b) => b.frames)
+    .filter((frame) => Number.isFinite(frame?.t))
+    .sort((a, b) => a.t - b.t);
 }
 
 /** Save derived metrics separately from raw pose/video chunks; all records share clipId. */
