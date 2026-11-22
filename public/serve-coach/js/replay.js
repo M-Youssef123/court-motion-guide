@@ -16,7 +16,7 @@
  */
 
 import * as store from "./store.js";
-import { lowerBoundTime, nearestSample } from "./pose-timeline.js";
+import { nearestSample } from "./pose-timeline.js";
 import { SkeletonOverlay, drawTossTrack } from "./overlay.js";
 import { estimateFrame } from "./pose.js";
 import { tripodName, orientationName } from "./labels.js";
@@ -24,8 +24,8 @@ import { saveVideo, clipFilename } from "./save-video.js";
 import { resolveServingArm } from "./contact-analysis.js";
 
 import { buildClipAnalysis } from "./practice-data.js";
-import { detectServePhases } from "./serve-phases.js";
-import { selectSwing, selectTrackedSwing, drawSwingArc } from "./swing-arc.js";
+import { wristTrailSamples, drawSwingArc } from "./swing-arc.js";
+import { replayWristSummary } from "./replay-metrics.js";
 
 import { seekUploadVideo } from "./upload-media.js";
 
@@ -104,22 +104,22 @@ export function initReplay({ onDeleted } = {}) {
     <div class="rp-toggles">
       <button class="rp-tog" id="rpAngles" type="button" aria-pressed="false" disabled>2D angles</button>
       <button class="rp-tog" id="rpToss" type="button" aria-pressed="false" hidden>Toss path</button>
-      <label>Trajectory arc <select class="input" id="rpTrajectory" disabled><option value="none">None</option><option value="trail">Trailing 300 ms</option><option value="full">Full swing</option></select></label>
+      <button class="rp-tog" id="rpTrajectoryTrail" type="button" aria-pressed="false" disabled>Wrist trail</button>
     </div>
     <p class="rec-label" id="rpMeasurements"></p>
     <p class="rec-label" id="rpWrist"></p>
-    <p class="rec-label" id="rpArcStatus" role="status"></p>
     <div class="rp-jumps" role="group" aria-label="Jump to a tracked moment">
-      <button class="btn btn-quiet" id="rpSpeedPeak" type="button" disabled>Peak wrist speed</button>
+      <button class="btn btn-quiet" id="rpSpeedPeak" type="button" disabled>Fastest wrist movement</button>
       <button class="btn btn-quiet" id="rpContact" type="button" disabled>Overhead reach</button>
     </div>
     <p class="rec-label" id="rpReachStatus"></p>
     <button class="btn btn-quiet" id="rpRealign" type="button" hidden>Re-align tracking</button>
-    <p class="rec-label">Angles and wrist speeds describe the camera image. Framing and perspective affect them. Wrist speed is shown in percent of image diagonal per second.</p>`;
+    <p class="rec-label" id="rpWristNote"></p>
+    <p class="rec-label">2D angles describe body positions in the camera view, not 3D joint angles. Framing and perspective affect them.</p>`;
   $("rpInfo").before(movement);
   let analysis = null,
     anglesOn = false,
-    swing = null,
+    trailOn = false,
     tossOn = false;
   const measurement = $("rpMeasurements");
   $("rpBox").append(measurement);
@@ -127,27 +127,26 @@ export function initReplay({ onDeleted } = {}) {
 
   function paintSpeed() {
     analysis = buildClipAnalysis(clip, frames, { arm: selectedArm, offsetMs });
-    const wrist = analysis.metrics.wrist;
-    const phases = detectServePhases(
-      frames,
-      { ...clip, dominantHand: selectedArm, servingArm: selectedArm },
-      offsetMs,
-    );
-    swing = selectSwing(
-      wrist,
-      phases.trophy?.poseTimestampMs,
-      analysis.metrics.contact?.poseTimestampMs,
-      phases.finish?.poseTimestampMs,
-    );
-    swing ??= selectTrackedSwing(wrist, analysis.metrics.contact?.poseTimestampMs);
-    arcStatus();
     const angle = analysis.metrics.contact?.elbowAngleDegrees;
     $("rpReachStatus").textContent = Number.isFinite(angle)
       ? `Estimated overhead reach · ${angle.toFixed(0)}° elbow angle.`
       : "Overhead reach unavailable. The serving arm needs to be visible from preparation through reach.";
-    $("rpWrist").textContent = wrist
-      ? `Tracked wrist speed · Peak ${wrist.peak.speed.toFixed(1)}%/s · Average ${wrist.average.toFixed(1)}%/s over ${wrist.trackedSeconds.toFixed(1)} tracked seconds.`
-      : "Wrist speed unavailable. A serving hand and continuous wrist tracking are needed.";
+    const summary = replayWristSummary(analysis.metrics);
+    const bands = {
+      "near-average": "Near this clip’s average",
+      faster: "Faster than this clip’s average",
+      "much-faster": "Much faster than this clip’s average",
+    };
+    $("rpWrist").textContent = summary.kind === "estimated-speed"
+      ? `Estimated hand speed at overhead reach: ~${summary.mph.toFixed(0)} mph`
+      : summary.kind === "relative-motion"
+        ? `Peak wrist movement: ${bands[summary.band]}`
+        : "Wrist movement unavailable. Continuous serving-wrist tracking is needed.";
+    $("rpWristNote").textContent = summary.kind === "estimated-speed"
+      ? "Approximate 2D wrist estimate using an assumed 0.50 m torso. Not measured racket or ball speed; overhead reach is not verified ball contact."
+      : summary.kind === "relative-motion"
+        ? "Relative movement within this recording only—not physical speed, acceleration or a skill rating."
+        : "";
   }
   function jumpTo(poseMs) {
     if (calibrating || !Number.isFinite(poseMs)) return;
@@ -164,17 +163,9 @@ export function initReplay({ onDeleted } = {}) {
     $("rpAngles").setAttribute("aria-pressed", String(anglesOn));
     redraw();
   });
-  function arcStatus() {
-    const mode = $("rpTrajectory").value;
-    $("rpArcStatus").textContent =
-      mode === "full" && !swing
-        ? "Full swing needs continuous tracking from preparation through the finish."
-        : mode === "full"
-          ? `${swing.partial ? "Partial arc. Only the continuous tracked segment is shown. " : ""}Diamond: highest wrist point. Circle: fastest tracked wrist movement.`
-          : "";
-  }
-  $("rpTrajectory").addEventListener("change", () => {
-    arcStatus();
+  $("rpTrajectoryTrail").addEventListener("click", () => {
+    trailOn = !trailOn;
+    $("rpTrajectoryTrail").setAttribute("aria-pressed", String(trailOn));
     redraw();
   });
   const tossButton = $("rpToss");
@@ -226,16 +217,9 @@ export function initReplay({ onDeleted } = {}) {
     const display = reading || "2D angles unavailable here";
     if (anglesOn && measurement.textContent !== display) measurement.textContent = display;
     if (tossOn) drawTossTrack(overlay, clip?.ballToss);
-    const wrist = analysis?.metrics.wrist,
-      mode = $("rpTrajectory").value;
-    if (mode === "trail" && wrist) {
-      const start = lowerBoundTime(wrist.trajectory, poseMs - 300);
-      let end = start;
-      while (end < wrist.trajectory.length && wrist.trajectory[end].t <= poseMs) end++;
-      const samples = wrist.trajectory.slice(start, end);
-      drawSwingArc(overlay, samples, { poseMs, peak: wrist.peak, trailing: true });
-    } else if (mode === "full" && swing) {
-      drawSwingArc(overlay, swing.samples, { poseMs, peak: swing.peak, apex: swing.apex });
+    const wrist = analysis?.metrics.wrist;
+    if (trailOn && wrist) {
+      drawSwingArc(overlay, wristTrailSamples(wrist.trajectory, poseMs), { poseMs, peak: wrist.peak });
     }
   }
   function startSync() {
@@ -466,7 +450,7 @@ export function initReplay({ onDeleted } = {}) {
     $("rpSpeedPeak").disabled = !on || !analysis?.metrics.wrist;
     $("rpContact").disabled = !on || !analysis?.metrics.contact;
     $("rpAngles").disabled = !on;
-    $("rpTrajectory").disabled = !on || !analysis?.metrics.wrist;
+    $("rpTrajectoryTrail").disabled = !on || !analysis?.metrics.wrist;
     document.querySelectorAll("[data-rprate],[data-rpstep]").forEach((b) => {
       b.disabled = !on;
     });
@@ -530,13 +514,14 @@ export function initReplay({ onDeleted } = {}) {
     clipBlob = null;
     setSave("idle");
     analysis = null;
-    swing = null;
+    trailOn = false;
+    $("rpTrajectoryTrail").setAttribute("aria-pressed", "false");
     tossButton.hidden = true;
     setToss(false);
-    $("rpArcStatus").textContent = "";
     selectedArm = null;
     measurement.hidden = true;
     $("rpWrist").textContent = "";
+    $("rpWristNote").textContent = "";
   }
 
   $("rpRealign").addEventListener("click", () => {

@@ -1,3 +1,8 @@
+# Replay movement cleanup
+- [x] Replace the full-swing selector with a 300 ms wrist-trail toggle.
+- [x] Show qualified hand estimates or clip-relative movement without percentage speed labels.
+- [x] Run all tests and verify replay controls, playback and scrubbing on desktop/mobile.
+
 # Swing-speed analysis
 - [x] Extract estimated hand/racket speeds from stored pose frames with confidence checks and smoothing.
 - [x] Show estimates and peak-video seek on replay without changing recording or playback rates.
