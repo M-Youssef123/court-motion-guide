@@ -157,7 +157,7 @@ describe("versioned local practice data", () => {
     await store.putPoses(clip.id, 0, raw);
     const analysis = await store.finalizeClipData(clip.id);
     expect(analysis).toMatchObject({
-      schemaVersion: 3,
+      schemaVersion: 4,
       clipId: clip.id,
       sessionId: session.id,
       strokeType: "serve",

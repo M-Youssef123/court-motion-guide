@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   analyzeServeContact,
+  estimateForwardSwingSpeed,
   extensionInsight,
   resolveServingArm,
   // @ts-expect-error static app uses plain JS modules
@@ -99,30 +100,30 @@ describe("selected serving arm contact analysis", () => {
     angleAt(frames, 5, 114.99);
     expect(analyzeServeContact(frames, size)?.contactFrameIndex).toBe(8);
   });
-  it("requires trophy within the preceding 0.75 seconds", () => {
+  it("accepts a trophy up to 1.2 seconds before contact", () => {
     const frames = serve();
     for (let i = 0; i <= 7; i++) angleAt(frames, i, 115.01);
     angleAt(frames, 1, 114.99); // 700 ms before contact
     expect(analyzeServeContact(frames, size)?.contactFrameIndex).toBe(8);
     angleAt(frames, 1, 115.01);
-    angleAt(frames, 0, 114.99); // 800 ms before contact
-    expect(analyzeServeContact(frames, size)).toBeNull();
+    angleAt(frames, 0, 114.99); // 800 ms before contact, inside the 1.2 s window
+    expect(analyzeServeContact(frames, size)?.contactFrameIndex).toBe(8);
   });
-  it("requires extension strictly above 135 degrees and wrist above the serving shoulder", () => {
+  it("requires extension strictly above 115 degrees and wrist above the serving shoulder", () => {
     const frames = serve();
     // Keep the tested frame the global wrist apex.
     for (const i of [6, 7, 9]) required(frames[i]).kp[10 * 3 + 1] = 0.29;
-    angleAt(frames, 8, 134.99);
+    angleAt(frames, 8, 114.99);
     expect(analyzeServeContact(frames, size)).toBeNull();
-    angleAt(frames, 8, 135.01);
+    angleAt(frames, 8, 115.01);
     expect(analyzeServeContact(frames, size)?.contactFrameIndex).toBe(8);
     required(frames[8]).kp[1] = 0.1; // nose above the wrist no longer blocks side-on footage
     expect(analyzeServeContact(frames, size)?.contactFrameIndex).toBe(8);
   });
-  it("uses the contact-frame torso scale of 0.50 / 200", () => {
+  it("uses the clip-median torso scale of 0.50 / 200", () => {
     const frames = serve();
     for (const [i, f] of frames.entries())
-      if (i !== 8) {
+      if (i === 8) {
         f.kp[11 * 3 + 1] = 0.8;
         f.kp[12 * 3 + 1] = 0.8;
       }
@@ -181,7 +182,7 @@ describe("selected serving arm contact analysis", () => {
   });
   it("retains contact but withholds speed when torso scale is unavailable", () => {
     const frames = serve();
-    required(frames[8]).kp[11 * 3 + 2] = 0;
+    for (const f of frames) f.kp[11 * 3 + 2] = 0;
     const result = analyzeServeContact(frames, size);
     expect(result?.contactTimestamp).toBe(800);
     expect(result?.handSpeedMph).toBeNull();
@@ -206,5 +207,28 @@ describe("selected serving arm contact analysis", () => {
     expect(extensionInsight(144.99)).toBe(
       "Bent-arm contact detected. Toss higher and hit at peak reach to clear the net.",
     );
+  });
+});
+
+describe("resilient wrist speed", () => {
+  it("uses median torso when the contact frame lacks a hip", () => {
+    const frames = serve();
+    required(frames[8]).kp[11 * 3 + 2] = 0;
+    expect(analyzeServeContact(frames, size)?.metersPerPixel).toBe(0.0025);
+  });
+  it("clamps a single jitter jump at 65 mph instead of dropping speed", () => {
+    const frames = serve();
+    required(frames[9]).kp[10 * 3] = 0.95;
+    const mph = analyzeServeContact(frames, size)?.handSpeedMph;
+    expect(mph).not.toBeNull();
+    expect(mph).toBeLessThanOrEqual(65);
+  });
+  it("forward-swing fallback gives a capped mph when no trophy is found", () => {
+    const frames = serve();
+    for (let i = 0; i <= 7; i++) angleAt(frames, i, 120);
+    expect(analyzeServeContact(frames, size)).toBeNull();
+    const r = estimateForwardSwingSpeed(frames, size);
+    expect(r?.handSpeedMph).toBeGreaterThan(0);
+    expect(r?.handSpeedMph).toBeLessThanOrEqual(65);
   });
 });

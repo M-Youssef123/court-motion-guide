@@ -1,11 +1,11 @@
 /* Versioned derived data over saved poses only; never changes video or runs MoveNet. */
-import { analyzeServeContact, servingArm } from "./contact-analysis.js";
+import { analyzeServeContact, estimateForwardSwingSpeed, servingArm } from "./contact-analysis.js";
 import { buildCoachingInsights } from "./coaching-insights.js";
 import { bodyOrientation, jointAngle, smoothMovement, wristMotion } from "./movement-analysis.js";
 import { detectServePhases, serveTimingMetrics } from "./serve-phases.js";
 export { jointAngle } from "./movement-analysis.js";
 
-export const ANALYSIS_VERSION = 3;
+export const ANALYSIS_VERSION = 4;
 const MIN_CONFIDENCE = 0.35;
 const JOINTS = {
   leftElbow: [5, 7, 9],
@@ -47,6 +47,10 @@ export function buildClipAnalysis(
   const strokeType = clip.strokeType || "serve";
   const contact =
     strokeType === "serve" ? analyzeServeContact(frames, { width, height, arm, offsetMs }) : null;
+  const swingFallback =
+    strokeType === "serve" && (!contact || contact.handSpeedMph === null)
+      ? estimateForwardSwingSpeed(frames, { width, height, arm, offsetMs })
+      : null;
   const smoothed = smoothMovement(frames);
   const phases =
     strokeType === "serve"
@@ -126,7 +130,16 @@ export function buildClipAnalysis(
               method: "contact-local three-sample averaged wrist velocity",
               torsoReferenceMeters: 0.5,
             }
-          : null,
+          : swingFallback
+            ? {
+                handMph: swingFallback.handSpeedMph,
+                handKmh: swingFallback.handSpeedKmh,
+                timestampMs: swingFallback.timestamp,
+                estimated: true,
+                method: "peak forward-swing three-sample averaged wrist velocity",
+                torsoReferenceMeters: 0.5,
+              }
+            : null,
     },
     availability: contact ? "contact-estimated" : "contact-unavailable",
   };

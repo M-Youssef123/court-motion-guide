@@ -5,6 +5,41 @@ const ARMS = {
 };
 const MIN_CONFIDENCE = 0.35;
 const MAX_GAP_MS = 250;
+const MAX_MPH = 65;
+const MPH = 2.237;
+const TROPHY_WINDOW_MS = 1200;
+const MIN_EXTENSION = 115;
+
+function torsoHeight(frame, width, height) {
+  const ls = point(frame, 5, width, height),
+    rs = point(frame, 6, width, height);
+  const lh = point(frame, 11, width, height),
+    rh = point(frame, 12, width, height);
+  if (!ls || !rs || !lh || !rh) return 0;
+  return Math.hypot((ls.x + rs.x - lh.x - rh.x) / 2, (ls.y + rs.y - lh.y - rh.y) / 2);
+}
+
+// Median torso height over every frame with all four torso points; contact frame as fallback.
+export function clipTorsoPixelHeight(frames, width, height, fallbackFrame) {
+  const values = frames
+    .map((f) => torsoHeight(f, width, height))
+    .filter((v) => v > 0)
+    .sort((a, b) => a - b);
+  if (values.length) {
+    const m = values.length >> 1;
+    return values.length % 2 ? values[m] : (values[m - 1] + values[m]) / 2;
+  }
+  return fallbackFrame ? torsoHeight(fallbackFrame, width, height) : 0;
+}
+
+// Frame-to-frame wrist speed in m/s, clamped at the 65 mph ceiling instead of discarded.
+function stepSpeed(a, b, metersPerPixel) {
+  if (!a || !b || b.t <= a.t || b.t - a.t > MAX_GAP_MS) return null;
+  const mps =
+    (Math.hypot(b.wrist.x - a.wrist.x, b.wrist.y - a.wrist.y) * metersPerPixel) /
+    ((b.t - a.t) / 1000);
+  return Number.isFinite(mps) ? Math.min(mps, MAX_MPH / MPH) : null;
+}
 
 export function servingArm(value) {
   return value === "R" || value === "right"
@@ -74,9 +109,10 @@ function armPose(frame, arm, width, height) {
   return { t: frame.t, wrist, angle };
 }
 
-/** Trophy <115° within preceding 750 ms; selected wrist apex above the serving shoulder; extension >135°.
+/** Trophy <115° within preceding 1200 ms (up to two blurred samples bridged); selected wrist apex above the serving shoulder; extension >115° (2D foreshortening).
  * One missing wrist sample beside the apex is tolerated when the sample beyond it is tracked.
- * Velocity uses the contact-frame 0.50 m torso scale and a centered three-sample
+ * Velocity uses the clip-median 0.50 m torso scale, clamps per-step jumps at 65 mph,
+ * and and a centered three-sample
  * moving average nearest contact, restricted to ±3 saved frames. No global speed peak.
  */
 export function analyzeServeContact(frames, { width, height, arm, offsetMs = 0 }) {
@@ -104,7 +140,7 @@ export function analyzeServeContact(frames, { width, height, arm, offsetMs = 0 }
   });
   const hit = poses[contactFrameIndex];
   const frame = frames[contactFrameIndex];
-  if (!hit || !frame || hit.angle <= 135) return null;
+  if (!hit || !frame || hit.angle <= MIN_EXTENSION) return null;
   // Side-on footage often hides the nose; the serving shoulder is always tracked here.
   const shoulder = point(frame, ARMS[arm].shoulder, width, height);
   if (!shoulder || hit.wrist.y >= shoulder.y) return null;
@@ -121,25 +157,18 @@ export function analyzeServeContact(frames, { width, height, arm, offsetMs = 0 }
   for (let i = contactFrameIndex - 1; i >= 0; i--) {
     const p = poses[i];
     if (!p) {
-      // Bridge one blurred sample; two in a row end the trophy search.
-      if (skipped++) break;
+      // Bridge up to two blurred samples; three in a row end the trophy search.
+      if (++skipped > 2) break;
       continue;
     }
-    if (next.t <= p.t || next.t - p.t > MAX_GAP_MS * (1 + skipped) || hit.t - p.t > 750) break;
+    if (next.t <= p.t || next.t - p.t > MAX_GAP_MS * (1 + skipped) || hit.t - p.t > TROPHY_WINDOW_MS) break;
     skipped = 0;
     if (p.angle < 115) trophy = true;
     next = p;
   }
   const contactTimestamp = hit.t - offsetMs;
   if (!trophy || contactTimestamp < 0) return null;
-  const ls = point(frame, 5, width, height),
-    rs = point(frame, 6, width, height);
-  const lh = point(frame, 11, width, height),
-    rh = point(frame, 12, width, height);
-  const torsoPixelHeight =
-    ls && rs && lh && rh
-      ? Math.hypot((ls.x + rs.x - lh.x - rh.x) / 2, (ls.y + rs.y - lh.y - rh.y) / 2)
-      : 0;
+  const torsoPixelHeight = clipTorsoPixelHeight(frames, width, height, frame);
   const metersPerPixel = torsoPixelHeight > 0 ? 0.5 / torsoPixelHeight : null;
   let speed = null;
   if (metersPerPixel) {
@@ -152,14 +181,8 @@ export function analyzeServeContact(frames, { width, height, arm, offsetMs = 0 }
     ) {
       const a = poses[i - 1],
         b = poses[i];
-      if (!a || !b || b.t <= a.t || b.t - a.t > MAX_GAP_MS) {
-        window = [];
-        continue;
-      }
-      const mps =
-        (Math.hypot(b.wrist.x - a.wrist.x, b.wrist.y - a.wrist.y) * metersPerPixel) /
-        ((b.t - a.t) / 1000);
-      if (!Number.isFinite(mps) || mps * 2.237 > 65) {
+      const mps = stepSpeed(a, b, metersPerPixel);
+      if (mps === null) {
         window = [];
         continue;
       }
@@ -186,7 +209,45 @@ export function analyzeServeContact(frames, { width, height, arm, offsetMs = 0 }
     elbowAngle: hit.angle,
     insight: extensionInsight(hit.angle),
     metersPerPixel,
-    handSpeedMph: speed === null ? null : speed * 2.237,
+    handSpeedMph: speed === null ? null : speed * MPH,
     handSpeedKmh: speed === null ? null : speed * 3.6,
+  };
+}
+
+/** Fallback when no contact sequence is found: peak three-sample average of serving-wrist
+ * speed while the wrist is above the serving shoulder (forward swing). Not an impact speed. */
+export function estimateForwardSwingSpeed(frames, { width, height, arm, offsetMs = 0 }) {
+  arm = servingArm(arm);
+  if (!arm || !Array.isArray(frames) || !(width > 0) || !(height > 0) || !Number.isFinite(offsetMs))
+    return null;
+  const torso = clipTorsoPixelHeight(frames, width, height, null);
+  if (!(torso > 0)) return null;
+  const mpp = 0.5 / torso;
+  const poses = frames.map((f) => {
+    const p = armPose(f, arm, width, height);
+    const s = point(f, ARMS[arm].shoulder, width, height);
+    return p && s && p.wrist.y < s.y ? p : null;
+  });
+  let window = [],
+    best = null;
+  for (let i = 1; i < poses.length; i++) {
+    const mps = stepSpeed(poses[i - 1], poses[i], mpp);
+    if (mps === null) {
+      window = [];
+      continue;
+    }
+    window.push({ mps, t: poses[i].t });
+    if (window.length > 3) window.shift();
+    if (window.length === 3) {
+      const avg = (window[0].mps + window[1].mps + window[2].mps) / 3;
+      if (!best || avg > best.mps) best = { mps: avg, t: window[1].t };
+    }
+  }
+  if (!best || best.t - offsetMs < 0) return null;
+  return {
+    handSpeedMph: best.mps * MPH,
+    handSpeedKmh: best.mps * 3.6,
+    timestamp: best.t - offsetMs,
+    metersPerPixel: mpp,
   };
 }
